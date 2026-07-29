@@ -1,4 +1,4 @@
-import { memo, useEffect, useState, useCallback } from "react";
+import { memo, useEffect, useState, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import type { AgentMessage } from "@/types/agent";
 
@@ -10,9 +10,10 @@ interface Props {
 export const ConversationTimeline = memo(function ConversationTimeline({ messages, containerRef }: Props) {
   const [activeIdx, setActiveIdx] = useState(-1);
 
-  const userIndices = messages
+  const userIndices = useMemo(() => messages
     .map((m, i) => m.type === "user" ? i : -1)
-    .filter(i => i >= 0);
+    .filter(i => i >= 0)
+    .slice(-40), [messages]);
 
   useEffect(() => {
     const container = containerRef.current;

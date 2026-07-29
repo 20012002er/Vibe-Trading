@@ -1,4 +1,5 @@
 import { memo } from "react";
+import i18n from "@/i18n";
 import { cn } from "@/lib/utils";
 import { getMetricLabel, DISPLAY_ORDER, formatMetricVal, metricSentiment } from "@/lib/formatters";
 
@@ -7,6 +8,12 @@ const SENTIMENT = {
   neutral: "text-foreground",
   negative: "text-danger",
 } as const;
+
+// Verdict must never be color-only: metricSentiment is a threshold judgment
+// (Sharpe +0.20 renders red, +1.50 green — identical glyphs otherwise), so a
+// redundant shape + sr-only word carries it for color-blind and AT users.
+const SENTIMENT_GLYPH: Partial<Record<string, string>> = { positive: "▲", negative: "▼" };
+const SENTIMENT_SR_KEY: Partial<Record<string, string>> = { positive: "metrics.good", negative: "metrics.poor" };
 
 interface Props {
   metrics: Record<string, number>;
@@ -33,10 +40,18 @@ export const MetricsCard = memo(function MetricsCard({ metrics, compact = false 
             {getMetricLabel(k)}
           </p>
           <p className={cn(
-            "text-sm font-bold font-mono tabular-nums mt-0.5",
+            "text-sm font-semibold font-mono tabular-nums mt-0.5",
             SENTIMENT[metricSentiment(k, v)]
           )}>
+            {SENTIMENT_GLYPH[metricSentiment(k, v)] != null && (
+              <span aria-hidden="true" className="me-0.5 text-[10px] align-middle">
+                {SENTIMENT_GLYPH[metricSentiment(k, v)]}
+              </span>
+            )}
             {formatMetricVal(k, v)}
+            {SENTIMENT_SR_KEY[metricSentiment(k, v)] != null && (
+              <span className="sr-only"> {i18n.t(SENTIMENT_SR_KEY[metricSentiment(k, v)]! as never)}</span>
+            )}
           </p>
         </div>
       ))}

@@ -21,7 +21,11 @@
     "dark": "ダーク",
     "language": "言語",
     "collapse": "折りたたむ",
-    "expand": "展開"
+    "expand": "展開",
+    "skipToMain": "メインコンテンツへスキップ",
+    "sidebar": "Vibe-Trading サイドバー",
+    "mainNavigation": "メインナビゲーション",
+    "about": "概要"
   },
   "runtime": {
     "monitorBadge": "ランタイムモニター",
@@ -142,17 +146,14 @@
     "return": "リターン",
     "sharpe": "Sharpe",
     "fullReport": "完全なレポート",
-    "compare": "比較"
+    "compare": "比較",
+    "unknown": "不明"
   },
   "connection": {
-    "reconnecting": "接続が切断されました。再接続中です({{attempt}} 回目)…",
+    "reconnecting": "再接続しています…",
     "disconnected": "接続が切断されました"
   },
   "welcome": {
-    "title": "Vibe-Trading",
-    "subtitle": "プロの金融エージェントチームと vibe trading を",
-    "describePrompt": "取引戦略を記述して開始してください。",
-    "tryExample": "例を試す:",
     "categories": {
       "multiMarketBacktest": "マルチマーケットバックテスト",
       "researchAnalysis": "リサーチ & 分析",
@@ -164,7 +165,7 @@
       "valueInvesting": "バリュー投資"
     },
     "examples": {
-      "crossMarketPortfolio": "A株ポートフォリオ最適化",
+      "crossMarketPortfolio": "3銘柄の配分バランス",
       "crossMarketPortfolioDesc": "A株ポートフォリオのリスクパリティ最適化",
       "btcMacd": "A株 MACD 戦略",
       "btcMacdDesc": "分足データによるA株MACD戦略バックテスト",
@@ -172,7 +173,7 @@
       "usTechMaxDivDesc": "ブルーチップ最大分散ポートフォリオ",
       "multiFactorAlpha": "マルチファクター Alpha モデル",
       "multiFactorAlphaDesc": "300 銘柄に対する IC 重み付きファクター合成",
-      "optionsGreeks": "オプション Greeks 分析",
+      "optionsGreeks": "オプションのリスク指標（Greeks）",
       "optionsGreeksDesc": "Black-Scholes 価格モデルに基づく Delta/Gamma/Theta/Vega 分析",
       "valueCommittee": "バリュー投資委員会",
       "valueCommitteeDesc": "Buffett / Munger / Duan Yongping / Li Lu の4視点で1銘柄を討論",
@@ -183,10 +184,10 @@
       "thesisTracker": "投資テーシス・トラッカー",
       "thesisTrackerDesc": "保有銘柄に5文のテーシス、レッドライン、評価アンカーを作成",
       "thesisTrackerPrompt": "thesis-tracker スキルを使い、Kweichow Moutai (600519.SH) の投資テーシスを作ってください: 5文の中核テーシス、反証可能な仮説、レッドライン、評価アンカーを financial_rigor で検証してください",
-      "valuationCheck": "精密バリュエーション検算",
+      "valuationCheck": "割高かどうかを検証（PE/PB/ROE）",
       "valuationCheckDesc": "厳密な十進演算で PE / PB / ROE / 時価総額を検証 (浮動小数点誤差なし)",
       "valuationCheckPrompt": "financial_rigor ツールで Kweichow Moutai の評価を検証してください: 価格 1500、EPS 68.6、1株当たり純資産 180 から PE、PB、ROE を厳密に計算し、3年の3シナリオ評価 (成長率 12%/8%/0%、PE 22/18/14) も実行してください",
-      "investmentCommittee": "投資委員会レビュー",
+      "investmentCommittee": "買いか売りか？委員会で討論",
       "investmentCommitteeDesc": "マルチエージェント討論: ロング vs ショート、リスクレビュー、PM 決定",
       "quantStrategyDesk": "クォント戦略デスク",
       "quantStrategyDeskDesc": "スクリーニング → ファクター研究 → バックテスト → リスク監査のパイプライン",
@@ -228,22 +229,22 @@
       "shadowDeltaPrompt": "過去90日間のシャドウバックテストを実行し、実際のPnLとシャドウが乖離した箇所 (ルール違反、早期退出、シグナル見逃し) を詳細に分析",
       "shadowReportPrompt": "シャドウレポートをレンダリングしてURLを渡す — あなた vs シャドウのデルタを先頭に表示"
     },
-    "capabilities": {
-      "financeSkills": "金融スキルライブラリ",
-      "swarmTeams": "Swarm エージェントチーム",
-      "autoTools": "自動検出ツール",
-      "markets": "A株 · マルチファクター · クォンツ",
-      "connectors": "トレーディングコネクタプロファイル",
-      "timeframes": "分足から日足までの時間軸",
-      "optimizers": "4 種類のポートフォリオ最適化手法",
-      "riskMetrics": "15+ リスク指標",
-      "options": "オプション & デリバティブ",
-      "pdfWeb": "PDF & Web リサーチ",
-      "factorML": "ファクター分析 & ML",
-      "journalAnalyzer": "トレードジャーナル分析",
-      "shadowBacktest": "シャドウアカウントバックテスト",
-      "memory": "永続メモリ",
-      "sessionSearch": "セッション検索"
+    "taskSubtitle": "銘柄・戦略・ポートフォリオについて聞いてください。データ取得から計算まで、すべての手順をお見せします。",
+    "quickActions": "クイックアクション",
+    "browseAllExamples": "すべての例を見る",
+    "greetings": {
+      "morning1": "おはようございます。",
+      "morning2": "おはようございます。いつでもどうぞ。",
+      "morning3": "おはようございます。始めましょう。",
+      "afternoon1": "こんにちは。",
+      "afternoon2": "次の質問の準備はいいですか？",
+      "afternoon3": "今日の午後は何を探求しますか？",
+      "evening1": "こんばんは。",
+      "evening2": "市場を読み解きましょう。",
+      "evening3": "集中リサーチを始めますか？",
+      "night1": "まだ考え中ですか？",
+      "night2": "一緒に整理しましょう。",
+      "night3": "締めくくる前に、もう一つ試しますか？"
     }
   },
   "settings": {
@@ -354,7 +355,12 @@
     "shellTools": "シェルツール",
     "scheduler": "スケジューラー",
     "sessionRuntime": "セッションランタイム",
-    "flagsReadFrom": "フラグは {{env_path}} の {{env1}}、{{env2}}、{{env3}} から読み取られます。"
+    "flagsReadFrom": "フラグは {{env_path}} の {{env1}}、{{env2}}、{{env3}} から読み取られます。",
+    "unknownError": "不明なエラー",
+    "providerChangeHint": "プロバイダーを変更すると、推奨モデルとエンドポイントが更新されます。",
+    "oauth": "OAuth",
+    "apiKey": "APIキー",
+    "tushareTokenDesc": "中国A株・先物・ファンド・マクロデータに使用します。未設定の場合、利用可能なところではAKShareにフォールバックします。"
   },
   "qveris": {
     "title": "QVeris ツールマーケットプレイス",
@@ -437,7 +443,12 @@
     "moreOptions": "その他のオプション",
     "uploadPdf": "PDF ドキュメントをアップロード",
     "researchGoal": "リサーチ目標",
-    "agentSwarm": "エージェント Swarm"
+    "agentSwarm": "エージェント Swarm",
+    "attachmentChip": "添付ファイル",
+    "swarmModeChip": "スウォームモード",
+    "goalModeChip": "リサーチ目標",
+    "continueGoalMessage": "リサーチ目標を続行: {{goal}}",
+    "loadEarlier": "以前のメッセージを読み込む"
   },
   "runDetail": {
     "title": "実行詳細",
@@ -515,7 +526,9 @@
     "trades": "トレード数",
     "maxConsecLosses": "最大連続損失",
     "exposureTime": "エクスポージャー時間",
-    "avgHoldingPeriod": "平均保有期間"
+    "avgHoldingPeriod": "平均保有期間",
+    "better": "良化",
+    "worse": "悪化"
   },
   "correlation": {
     "title": "相関行列",
@@ -742,7 +755,9 @@
     "time": "時間",
     "iters": "反復",
     "output": "出力",
-    "waitingForEvents": "エージェントイベントを待機中..."
+    "waitingForEvents": "エージェントイベントを待機中...",
+    "teamStarting": "チームを起動中です。数秒で最初の進捗が届きます…",
+    "detailsUnavailable": "詳細は利用できません"
   },
   "mandate": {
     "runtimeMandate": "コネクタランタイムマンデート",
@@ -819,5 +834,43 @@
     "noPriceData": "価格データがありません",
     "noCorrelationData": "相関データがありません",
     "noEquityData": "エクイティデータがありません"
+  },
+  "toolProgress": {
+    "step": "ステップ {{step}} · {{tool}}",
+    "toolsRunning": "実行中のツール: {{count}}",
+    "toolsCompleted": "完了したツール: {{count}}",
+    "more": "… ほか {{count}} 件",
+    "etaSeconds": "残り約 {{seconds}} 秒",
+    "earlier": "ほか {{count}} 件（完了済み）"
+  },
+  "swarm": {
+    "assemblingTeam": "チームを編成中…",
+    "preparingLayers": "実行レイヤーを準備中…",
+    "agentProgress": "スウォームエージェントの進捗",
+    "status": {
+      "waiting": "待機中",
+      "running": "実行中",
+      "done": "完了",
+      "failed": "失敗",
+      "blocked": "ブロック中",
+      "retry": "再試行中",
+      "cancelled": "キャンセル済み",
+      "pending": "開始待ち",
+      "completed": "完了",
+      "unknown": "不明"
+    },
+    "elapsed": {
+      "seconds": "{{value}}秒",
+      "minutesSeconds": "{{minutes}}分{{seconds}}秒"
+    },
+    "presets": {
+      "investment_committee": "投資委員会レビュー",
+      "quant_strategy_desk": "クオンツ戦略デスク",
+      "value_investing_committee": "バリュー投資委員会"
+    }
+  },
+  "metrics": {
+    "good": "良好",
+    "poor": "要注意"
   }
 }

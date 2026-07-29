@@ -12,7 +12,7 @@
     "correlation": "相关性矩阵",
     "sessions": "会话",
     "newChat": "新建对话",
-    "noSessions": "暂无会话",
+    "noSessions": "还没有对话——点 + 开始第一个",
     "confirm": "确认",
     "cancel": "取消",
     "rename": "重命名",
@@ -21,7 +21,11 @@
     "dark": "暗色",
     "language": "语言",
     "collapse": "收起",
-    "expand": "展开"
+    "expand": "展开",
+    "skipToMain": "跳转到主要内容",
+    "sidebar": "Vibe-Trading 侧边栏",
+    "mainNavigation": "主导航",
+    "about": "关于"
   },
   "runtime": {
     "monitorBadge": "运行时监控",
@@ -142,21 +146,18 @@
     "return": "收益率",
     "sharpe": "夏普",
     "fullReport": "完整报告",
-    "compare": "对比"
+    "compare": "对比",
+    "unknown": "未知"
   },
   "connection": {
-    "reconnecting": "连接已断开，正在重连（第 {{attempt}} 次）…",
-    "disconnected": "连接已断开"
+    "reconnecting": "正在重新连接…",
+    "disconnected": "连接已断开，刷新页面即可重连。"
   },
   "welcome": {
-    "title": "Vibe-Trading",
-    "subtitle": "与你的专业金融智能体团队一起进行 vibe trading",
-    "describePrompt": "描述一个交易策略即可开始。",
-    "tryExample": "试试示例：",
     "categories": {
-      "multiMarketBacktest": "多市场回测",
+      "multiMarketBacktest": "A股回测",
       "researchAnalysis": "研究与分析",
-      "swarmTeams": "群体智能团队",
+      "swarmTeams": "智能体团队",
       "docWebResearch": "文档与网络研究",
       "tradeJournal": "交易日志",
       "tradingConnectors": "交易连接器",
@@ -164,29 +165,29 @@
       "valueInvesting": "价值投资"
     },
     "examples": {
-      "crossMarketPortfolio": "A股组合优化",
-      "crossMarketPortfolioDesc": "A股组合风险平价优化",
+      "crossMarketPortfolio": "三只 A 股的仓位配比",
+      "crossMarketPortfolioDesc": "在 3 只 A 股之间分配资金，让每只承担同等风险（风险平价），再与等权组合对比",
       "btcMacd": "A股 MACD 策略",
       "btcMacdDesc": "基于分钟级数据的A股MACD策略回测",
-      "usTechMaxDiv": "蓝筹股最大分散化",
-      "usTechMaxDivDesc": "蓝筹股最大分散化投资组合",
+      "usTechMaxDiv": "蓝筹股分散配置",
+      "usTechMaxDivDesc": "给 5 只蓝筹分配权重，让风险不压在单只股票上（最大分散化优化器）",
       "multiFactorAlpha": "多因子 Alpha 模型",
-      "multiFactorAlphaDesc": "对 300 只股票进行 IC 加权因子合成",
-      "optionsGreeks": "期权希腊字母分析",
-      "optionsGreeksDesc": "Black-Scholes 定价，Delta/Gamma/Theta/Vega 分析",
+      "multiFactorAlphaDesc": "在 300 只股票上合成 4 类选股信号，按各自历史预测准确度（IC）加权",
+      "optionsGreeks": "期权风险指标（Greeks）分析",
+      "optionsGreeksDesc": "给期权定价，并算出它对股价、时间、波动率的敏感度（Greeks：Delta/Gamma/Theta/Vega）",
       "valueCommittee": "四大师价值委员会",
       "valueCommitteeDesc": "巴菲特/芒格/段永平/李录 四视角辩论一只股票",
       "valueCommitteePrompt": "用 run_swarm 执行 value_investing_committee,分析腾讯(00700.HK):巴菲特看护城河和价格、芒格做逆向、段永平看生意和人、李录看十年确定性,主席综合共识和矛盾",
       "bottleneckHunter": "供应链瓶颈猎手",
-      "bottleneckHunterDesc": "在超级趋势里找 Layer 2/3 咽喉环节的隐藏赢家",
+      "bottleneckHunterDesc": "在大趋势里找出上游卡脖子的小供应商，再筛掉估值已经太贵的",
       "bottleneckHunterPrompt": "用 bottleneck-hunter 技能找 AI 基础设施的 Layer 2/3 供应链瓶颈机会(光模块/激光器/InP 衬底),给瓶颈评级和过估值门的候选公司",
-      "thesisTracker": "投资论文追踪",
-      "thesisTrackerDesc": "为持仓写 5 句话论文 + 红线 + 估值锚点",
+      "thesisTracker": "投资逻辑追踪",
+      "thesisTrackerDesc": "给持仓写下 5 句话投资逻辑、触发卖出的红线和估值锚点",
       "thesisTrackerPrompt": "用 thesis-tracker 技能给贵州茅台(600519.SH)建立投资论文:5 句话核心论文、可验证假设、红线清单、估值锚点,用 financial_rigor 验算",
-      "valuationCheck": "精确估值验算",
-      "valuationCheckDesc": "用精确十进制验算 PE/PB/ROE/市值(无浮点误差)",
+      "valuationCheck": "估值核算（PE/PB/ROE）",
+      "valuationCheckDesc": "逐位精确复核 PE / PB / ROE / 市值，再做乐观／中性／悲观三档估值",
       "valuationCheckPrompt": "用 financial_rigor 工具验算贵州茅台估值:股价 1500、EPS 68.6、每股净资产 180,精确算 PE/PB/ROE,再做三情景估值(增速 12%/8%/0%,PE 22/18/14,3 年)",
-      "investmentCommittee": "投资委员会评审",
+      "investmentCommittee": "多空辩论：该买还是该卖",
       "investmentCommitteeDesc": "多智能体辩论：多头 vs 空头，风险审查，投资经理决策",
       "quantStrategyDesk": "量化策略工作台",
       "quantStrategyDeskDesc": "筛选 → 因子研究 → 回测 → 风险审计流水线",
@@ -209,7 +210,7 @@
       "shadowDelta": "我少赚了多少？",
       "shadowDeltaDesc": "回测影子策略并与实际盈亏进行归因分析",
       "shadowReport": "生成影子报告",
-      "shadowReportDesc": "8 章节 HTML/PDF —— 净值曲线、按市场夏普比率、归因瀑布图",
+      "shadowReportDesc": "可分享的 8 部分报告：账户净值曲线、风险调整后收益，以及每笔盈亏的来源拆解",
       "crossMarketPortfolioPrompt": "用000001.SZ、600519.SH、000858.SZ构建风险平价组合，回测2024全年，与等权基准对比",
       "btcMacdPrompt": "用000001.SZ的5分钟K线做MACD策略回测，快线12慢线26信号线9，近30天",
       "usTechMaxDivPrompt": "回测600519.SH、000858.SZ、601318.SH、000001.SZ、600036.SH的最大分散化投资组合，2024全年",
@@ -228,22 +229,22 @@
       "shadowDeltaPrompt": "运行过去 90 天的影子回测，并细化分析我的实际盈亏与影子账户发生分歧的地方（违反规则、过早退出、错过信号）",
       "shadowReportPrompt": "渲染影子报告并向我提供 URL —— 以你与影子账户的盈亏差距（Delta）为主导"
     },
-    "capabilities": {
-      "financeSkills": "金融技能库",
-      "swarmTeams": "群体智能团队",
-      "autoTools": "自动发现工具",
-      "markets": "A股 · 多因子 · 量化",
-      "connectors": "交易连接器配置",
-      "timeframes": "分钟级到日线级时间框架",
-      "optimizers": "4 种投资组合优化器",
-      "riskMetrics": "15+ 风险指标",
-      "options": "期权与衍生品",
-      "pdfWeb": "PDF 与网络研究",
-      "factorML": "因子分析与机器学习",
-      "journalAnalyzer": "交易日志分析器",
-      "shadowBacktest": "影子账户回测",
-      "memory": "持久化记忆",
-      "sessionSearch": "会话搜索"
+    "taskSubtitle": "问一只股票、一个策略，或者你的持仓——我会自己取数据、跑计算，并把每一步摆给你看。",
+    "quickActions": "快捷操作",
+    "browseAllExamples": "浏览全部示例",
+    "greetings": {
+      "morning1": "早上好。",
+      "morning2": "早上好，随时可以开始。",
+      "morning3": "早上好。我们开始吧。",
+      "afternoon1": "下午好。",
+      "afternoon2": "准备好研究下一个问题了吗？",
+      "afternoon3": "今天下午想探索什么？",
+      "evening1": "晚上好。",
+      "evening2": "一起来理清市场脉络。",
+      "evening3": "想深入研究点什么吗？",
+      "night1": "夜深了，还在琢磨？",
+      "night2": "我们一起把它理清。",
+      "night3": "收尾前，再研究一个想法？"
     }
   },
   "settings": {
@@ -354,7 +355,12 @@
     "shellTools": "Shell 工具",
     "scheduler": "调度器 (Scheduler)",
     "sessionRuntime": "会话运行时",
-    "flagsReadFrom": "功能开关从 {{env_path}} 中的 {{env1}}、{{env2}} 和 {{env3}} 读取。"
+    "flagsReadFrom": "功能开关从 {{env_path}} 中的 {{env1}}、{{env2}} 和 {{env3}} 读取。",
+    "unknownError": "未知错误",
+    "providerChangeHint": "更改提供商会更新推荐的模型和端点。",
+    "oauth": "OAuth",
+    "apiKey": "API 密钥",
+    "tushareTokenDesc": "用于中国 A 股、期货、基金和宏观数据。若未设置，项目会在可用时回退到 AKShare。"
   },
   "qveris": {
     "title": "QVeris 工具市场",
@@ -382,8 +388,8 @@
   "agent": {
     "connectionLostReconnect": "连接已断开，正在重连…",
     "connectionRestored": "连接已恢复",
-    "agentWorking": "智能体正在工作中…",
-    "reasoning": "推理中…",
+    "agentWorking": "开始动手了…",
+    "reasoning": "正在琢磨…",
     "running": "运行中",
     "newMessages": "新消息",
     "newResearchGoal": "新建研究目标",
@@ -404,7 +410,7 @@
     "editGoalObjectiveLabel": "编辑研究目标内容",
     "exportChat": "导出对话",
     "stopGeneration": "停止生成",
-    "runSwarmTeam": "运行群体团队",
+    "runSwarmTeam": "启动智能体团队",
     "uploadFile": "上传文件",
     "checkConnector": "检查连接器",
     "analyzePortfolio": "分析连接器投资组合",
@@ -416,8 +422,8 @@
     "researchGoalUpdated": "研究目标已更新",
     "failedToUpdateGoal": "更新目标失败。",
     "failedToLoadGoal": "加载目标失败。",
-    "cancelRequestSent": "取消请求已发送",
-    "cancelFailed": "取消失败",
+    "cancelRequestSent": "正在停止…",
+    "cancelFailed": "没能停下来，请再点一次。",
     "connectorHalted": "连接器运行时已停止",
     "failedToHaltConnector": "停止连接器运行时失败。",
     "cancelledFromUI": "已从 Web UI 取消。",
@@ -437,7 +443,12 @@
     "moreOptions": "更多选项",
     "uploadPdf": "上传 PDF 文档",
     "researchGoal": "研究目标",
-    "agentSwarm": "智能体蜂群"
+    "agentSwarm": "智能体团队",
+    "attachmentChip": "附件",
+    "swarmModeChip": "团队模式",
+    "goalModeChip": "研究目标",
+    "continueGoalMessage": "继续研究目标：{{goal}}",
+    "loadEarlier": "加载更早的消息"
   },
   "runDetail": {
     "title": "运行详情",
@@ -452,7 +463,7 @@
     "downloadTradesCsv": "下载交易 CSV",
     "downloadMetricsCsv": "下载指标 CSV",
     "noChartData": "暂无图表数据",
-    "noChartDataDesc": "回测引擎可能未生成价格数据。请检查 artifacts/ 目录。",
+    "noChartDataDesc": "这次运行没有保存价格数据，所以没有图表；下面的指标依然有效。",
     "symbol": "标的",
     "showOnly": "仅显示",
     "addSymbol": "添加标的",
@@ -515,7 +526,9 @@
     "trades": "交易次数",
     "maxConsecLosses": "最大连续亏损",
     "exposureTime": "持仓时间",
-    "avgHoldingPeriod": "平均持仓天数"
+    "avgHoldingPeriod": "平均持仓天数",
+    "better": "表现更优",
+    "worse": "表现更差"
   },
   "correlation": {
     "title": "相关性矩阵",
@@ -742,7 +755,9 @@
     "time": "耗时",
     "iters": "迭代",
     "output": "输出",
-    "waitingForEvents": "等待智能体事件..."
+    "waitingForEvents": "等待智能体事件...",
+    "teamStarting": "团队正在启动，稍等几秒就有第一批进展…",
+    "detailsUnavailable": "暂无详细信息"
   },
   "mandate": {
     "runtimeMandate": "连接器运行时 mandate",
@@ -819,5 +834,43 @@
     "noPriceData": "暂无价格数据",
     "noCorrelationData": "暂无相关性数据",
     "noEquityData": "暂无收益曲线数据"
+  },
+  "toolProgress": {
+    "step": "步骤 {{step}} · {{tool}}",
+    "toolsRunning": "运行中的工具：{{count}}",
+    "toolsCompleted": "已完成的工具：{{count}}",
+    "more": "… 另有 {{count}} 个",
+    "etaSeconds": "预计剩余 {{seconds}} 秒",
+    "earlier": "+{{count}} 个较早步骤"
+  },
+  "swarm": {
+    "assemblingTeam": "正在组建团队…",
+    "preparingLayers": "正在准备执行层…",
+    "agentProgress": "团队进度",
+    "status": {
+      "waiting": "等待中",
+      "running": "运行中",
+      "done": "已完成",
+      "failed": "失败",
+      "blocked": "已阻塞",
+      "retry": "重试中",
+      "cancelled": "已取消",
+      "pending": "等待启动",
+      "completed": "已完成",
+      "unknown": "未知"
+    },
+    "elapsed": {
+      "seconds": "{{value}}秒",
+      "minutesSeconds": "{{minutes}}分 {{seconds}}秒"
+    },
+    "presets": {
+      "investment_committee": "投资委员会评审",
+      "quant_strategy_desk": "量化策略工作台",
+      "value_investing_committee": "价值投资委员会"
+    }
+  },
+  "metrics": {
+    "good": "良好",
+    "poor": "欠佳"
   }
 }

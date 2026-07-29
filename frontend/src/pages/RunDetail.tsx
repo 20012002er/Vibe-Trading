@@ -1,6 +1,7 @@
 import i18n from '@/i18n';
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { useParams, useNavigate } from "react-router";
 import {
   AlertTriangle,
@@ -93,6 +94,7 @@ function yieldToBrowser(): Promise<void> {
 export function RunDetail() {
   const { runId } = useParams<{ runId: string }>();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [run, setRun] = useState<RunData | null>(null);
   const [code, setCode] = useState<Record<string, string>>({});
   const [tab, setTab] = useState<Tab>("chart");
@@ -284,41 +286,55 @@ export function RunDetail() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="border-b p-4 space-y-3">
+      <div className="border-b border-border/60 p-4 space-y-3">
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate(-1)}
-            className="p-1 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+            className="p-1 rounded-md hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground"
             title={i18n.t("runDetail.goBack")}
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
-          {ok ? <CheckCircle2 className="h-5 w-5 text-success" /> : <XCircle className="h-5 w-5 text-danger" />}
-          <h1 className="font-mono text-sm font-medium">{runId}</h1>
+          {ok ? (
+            <>
+              <CheckCircle2 className="h-5 w-5 text-success" aria-hidden="true" />
+              <span className="sr-only">{t("swarm.status.completed")}</span>
+            </>
+          ) : (
+            <>
+              <XCircle className="h-5 w-5 text-danger" aria-hidden="true" />
+              <span className="sr-only">{t("swarm.status.failed")}</span>
+            </>
+          )}
+          <h1 className="font-mono text-2xl font-semibold">{runId}</h1>
           {run.elapsed_seconds && <span className="text-xs text-muted-foreground">{run.elapsed_seconds.toFixed(1)}s</span>}
         </div>
         {run.prompt && <p className="text-sm text-muted-foreground">{run.prompt}</p>}
         {run.metrics && <MetricsCard metrics={run.metrics as Record<string, number>} />}
 
-        <div className="flex items-center gap-1">
-          {TABS.filter(t => !t.hidden).map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setTab(id)}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors",
-                tab === id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-              )}
-            >
-              <Icon className="h-3.5 w-3.5" /> {label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-1">
+          <div role="tablist" className="flex flex-wrap items-center gap-1">
+            {TABS.filter(tabItem => !tabItem.hidden).map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                role="tab"
+                aria-selected={tab === id}
+                onClick={() => setTab(id)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors",
+                  tab === id ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:bg-muted/60"
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" aria-hidden="true" /> {label}
+              </button>
+            ))}
+          </div>
 
-          <div className="ml-auto flex gap-1">
+          <div className="ml-auto flex flex-wrap gap-1">
             {run.trade_log && run.trade_log.length > 0 && (
               <button
                 onClick={() => downloadCsv(`trades_${runId}.csv`, buildTradesCsv(run.trade_log!))}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs text-muted-foreground hover:bg-muted transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs text-muted-foreground hover:bg-muted/60 transition-colors"
                 title={i18n.t("runDetail.downloadTradesCsv")}
               >
                 <Download className="h-3.5 w-3.5" /> {i18n.t("runDetail.downloadTradesCsv")}
@@ -327,7 +343,7 @@ export function RunDetail() {
             {run.metrics && (
               <button
                 onClick={() => downloadCsv(`metrics_${runId}.csv`, buildMetricsCsv(run.metrics!))}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs text-muted-foreground hover:bg-muted transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs text-muted-foreground hover:bg-muted/60 transition-colors"
                 title={i18n.t("runDetail.downloadMetricsCsv")}
               >
                 <Download className="h-3.5 w-3.5" /> {i18n.t("runDetail.downloadMetricsCsv")}
@@ -384,8 +400,8 @@ function RunCardTab({ card }: { card: RunCard }) {
       </div>
 
       {warnings.length > 0 && (
-        <section className="rounded-md border border-amber-500/25 bg-amber-500/5 p-3">
-          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-300">
+        <section className="rounded-xl border border-warning/25 bg-warning/5 p-4 shadow-sm">
+          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-warning">
             <AlertTriangle className="h-4 w-4" />
             {i18n.t("runDetail.warnings")}
           </div>
@@ -424,17 +440,17 @@ function RunCardTab({ card }: { card: RunCard }) {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-left text-muted-foreground">
-                  <th className="py-2 pr-4">{i18n.t("runDetail.path")}</th>
+                <tr className="border-b bg-muted/40 text-left text-[11px] uppercase tracking-wide text-muted-foreground [&_th]:font-medium">
+                  <th className="py-2 ps-4 pr-4">{i18n.t("runDetail.path")}</th>
                   <th className="py-2 pr-4">{i18n.t("runDetail.size")}</th>
                   <th className="py-2">{i18n.t("runDetail.sha256")}</th>
                 </tr>
               </thead>
               <tbody>
                 {artifacts.map((artifact) => (
-                  <tr key={`${artifact.path}-${artifact.sha256}`} className="border-b last:border-0">
-                    <td className="py-2 pr-4 font-mono text-xs">{artifact.path}</td>
-                    <td className="py-2 pr-4 tabular-nums text-muted-foreground">{formatBytes(artifact.size_bytes)}</td>
+                  <tr key={`${artifact.path}-${artifact.sha256}`} className="border-b last:border-0 hover:bg-muted/40">
+                    <td className="py-2 ps-4 pr-4 font-mono text-xs">{artifact.path}</td>
+                    <td className="py-2 pr-4 font-mono tabular-nums text-muted-foreground">{formatBytes(artifact.size_bytes)}</td>
                     <td className="py-2 font-mono text-xs text-muted-foreground">{shortHash(artifact.sha256)}</td>
                   </tr>
                 ))}
@@ -451,17 +467,17 @@ function RunCardTab({ card }: { card: RunCard }) {
 
 function RunCardStat({ label, value, tone = "normal" }: { label: string; value: string; tone?: "normal" | "warning" }) {
   return (
-    <div className="rounded-md border bg-card p-3">
+    <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={cn("mt-1 truncate text-sm font-medium", tone === "warning" ? "text-amber-700 dark:text-amber-300" : "")}>{value}</div>
+      <div className={cn("mt-1 truncate text-sm font-medium", tone === "warning" ? "text-warning" : "")}>{value}</div>
     </div>
   );
 }
 
 function RunCardPanel({ title, icon: Icon, children }: { title: string; icon: typeof FileCheck2; children: ReactNode }) {
   return (
-    <section className="rounded-md border bg-card p-4">
-      <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+    <section className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+      <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
         <Icon className="h-4 w-4 text-muted-foreground" />
         {title}
       </div>
@@ -476,16 +492,18 @@ function KeyValueTable({ data, empty, monospaceValues = false }: { data: Record<
     return <p className="text-sm text-muted-foreground">{empty}</p>;
   }
   return (
-    <table className="w-full table-fixed text-sm">
-      <tbody>
-        {entries.map(([key, value]) => (
-          <tr key={key} className="border-b last:border-0">
-            <td className="w-36 py-2 pr-4 align-top text-muted-foreground">{key}</td>
-            <td className={cn("py-2 align-top", monospaceValues ? "break-all font-mono text-xs" : "break-words text-right tabular-nums")}>{formatRunCardValue(value)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className="overflow-x-auto">
+      <table className="w-full table-fixed text-sm">
+        <tbody>
+          {entries.map(([key, value]) => (
+            <tr key={key} className="border-b last:border-0 hover:bg-muted/40">
+              <td className="w-36 py-2 ps-4 pr-4 align-top text-muted-foreground">{key}</td>
+              <td className={cn("py-2 align-top", monospaceValues ? "break-all font-mono text-xs" : "break-words text-right tabular-nums")}>{formatRunCardValue(value)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -555,7 +573,7 @@ function ChartTab({
   return (
     <div className="p-4 space-y-4">
       {chartSymbols.length > 0 && (
-        <div className="rounded-md border bg-card p-3">
+        <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
           <div className="flex flex-wrap items-center gap-2">
             <label className="text-xs font-medium text-muted-foreground" htmlFor="chart-symbol-select">
               {i18n.t("runDetail.symbol")}
@@ -564,7 +582,7 @@ function ChartTab({
               id="chart-symbol-select"
               value={chartPickerSymbol}
               onChange={(event) => onPickSymbol(event.target.value)}
-              className="h-8 rounded-md border bg-background px-2 text-sm"
+              className="h-8 rounded-md border border-border/60 bg-background px-2 text-sm"
             >
               {chartSymbols.map((symbol) => (
                 <option key={symbol} value={symbol}>{symbol}</option>
@@ -572,7 +590,7 @@ function ChartTab({
             </select>
             <button
               onClick={() => onCurrentOnly(chartPickerSymbol)}
-              className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted"
+              className="rounded-md border border-border/60 px-3 py-1.5 text-xs font-medium hover:bg-muted/60"
               disabled={!chartPickerSymbol || !!loadingSymbols[chartPickerSymbol]}
             >
               {loadingSymbols[chartPickerSymbol] ? <Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" /> : null}
@@ -580,14 +598,14 @@ function ChartTab({
             </button>
             <button
               onClick={() => onAddSymbol(chartPickerSymbol)}
-              className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted"
+              className="rounded-md border border-border/60 px-3 py-1.5 text-xs font-medium hover:bg-muted/60"
               disabled={!chartPickerSymbol || !!loadingSymbols[chartPickerSymbol]}
             >
               {i18n.t("runDetail.addSymbol")}
             </button>
             <button
               onClick={() => void onLoadAll()}
-              className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted"
+              className="rounded-md border border-border/60 px-3 py-1.5 text-xs font-medium hover:bg-muted/60"
               disabled={bulkLoading}
             >
               {bulkLoading ? <Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" /> : null}
@@ -596,7 +614,7 @@ function ChartTab({
             {bulkLoading && (
               <button
                 onClick={onCancelLoadAll}
-                className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                className="rounded-md border border-border/60 px-3 py-1.5 text-xs font-medium hover:bg-muted/60"
               >
                 {i18n.t("runDetail.cancelLoad")}
               </button>
@@ -608,7 +626,7 @@ function ChartTab({
                 <button
                   key={symbol}
                   onClick={() => onRemoveSymbol(symbol)}
-                  className="rounded-md bg-muted px-2 py-1 text-xs hover:bg-muted/80"
+                  className="rounded-md bg-muted/40 px-2 py-1 text-xs hover:bg-muted/60"
                 >
                   {symbol} x
                 </button>
@@ -629,19 +647,19 @@ function ChartTab({
         </div>
       )}
       {entries.length === 0 && (
-        <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+        <div className="rounded-xl border border-dashed border-border/60 bg-card p-5 text-center text-sm text-muted-foreground shadow-sm">
           {Object.keys(loadingSymbols).length > 0 ? i18n.t("runDetail.loadingSelectedChart") : i18n.t("runDetail.pickSymbolToLoad")}
         </div>
       )}
       {entries.map(([sym, bars]) => (
         <div key={sym}>
-          <h3 className="text-sm font-medium mb-1">{sym}</h3>
+          <h3 className="text-sm font-semibold text-muted-foreground mb-1">{sym}</h3>
           <CandlestickChart data={bars} markers={chartCache[sym]?.trade_markers?.filter(m => m.code === sym)} indicators={chartCache[sym]?.indicator_series?.[sym]} height={500} />
         </div>
       ))}
       {hasEquity && (
         <div>
-          <h3 className="text-sm font-medium mb-1">{i18n.t("runDetail.equityDrawdown")}</h3>
+          <h3 className="text-sm font-semibold text-muted-foreground mb-1">{i18n.t("runDetail.equityDrawdown")}</h3>
           <EquityChart data={run.equity_curve!} height={280} />
         </div>
       )}
@@ -654,30 +672,32 @@ function TradesTab({ run }: { run: RunData }) {
   if (trades.length === 0) return <div className="p-8 text-muted-foreground text-sm">{i18n.t("runDetail.noTrades")}</div>;
   return (
     <div className="p-4">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b text-left text-muted-foreground">
-            <th className="py-2 pr-4">{i18n.t("runDetail.time")}</th>
-            <th className="py-2 pr-4">{i18n.t("runDetail.code2")}</th>
-            <th className="py-2 pr-4">{i18n.t("runDetail.side")}</th>
-            <th className="py-2 pr-4">{i18n.t("runDetail.price")}</th>
-            <th className="py-2 pr-4">{i18n.t("runDetail.qty")}</th>
-            <th className="py-2">{i18n.t("runDetail.reason")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {trades.map((tr, i) => (
-            <tr key={i} className="border-b last:border-0 hover:bg-muted/20">
-              <td className="py-2 pr-4 font-mono text-xs">{tr.time || tr.timestamp}</td>
-              <td className="py-2 pr-4">{tr.code}</td>
-              <td className={cn("py-2 pr-4 font-medium", tr.side === "BUY" ? "text-success" : "text-danger")}>{tr.side}</td>
-              <td className="py-2 pr-4 tabular-nums">{tr.price}</td>
-              <td className="py-2 pr-4 tabular-nums">{tr.qty}</td>
-              <td className="py-2 text-muted-foreground">{tr.reason}</td>
+      <div className="overflow-x-auto rounded-xl border border-border/60 bg-card shadow-sm">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/40 text-left text-[11px] uppercase tracking-wide text-muted-foreground [&_th]:font-medium">
+              <th className="py-2 ps-4 pr-4">{i18n.t("runDetail.time")}</th>
+              <th className="py-2 pr-4">{i18n.t("runDetail.code2")}</th>
+              <th className="py-2 pr-4">{i18n.t("runDetail.side")}</th>
+              <th className="py-2 pr-4">{i18n.t("runDetail.price")}</th>
+              <th className="py-2 pr-4">{i18n.t("runDetail.qty")}</th>
+              <th className="py-2">{i18n.t("runDetail.reason")}</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {trades.map((tr, i) => (
+              <tr key={i} className="border-b last:border-0 hover:bg-muted/40">
+                <td className="py-2 ps-4 pr-4 font-mono text-xs">{tr.time || tr.timestamp}</td>
+                <td className="py-2 pr-4">{tr.code}</td>
+                <td className={cn("py-2 pr-4 font-medium", tr.side === "BUY" ? "text-success" : "text-danger")}>{tr.side}</td>
+                <td className="py-2 pr-4 font-mono tabular-nums">{tr.price}</td>
+                <td className="py-2 pr-4 font-mono tabular-nums">{tr.qty}</td>
+                <td className="py-2 text-muted-foreground">{tr.reason}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -688,9 +708,9 @@ function CodeTab({ code }: { code: Record<string, string> }) {
   if (files.length === 0) return <div className="p-8 text-muted-foreground text-sm">{i18n.t("runDetail.noCodeFiles")}</div>;
   return (
     <div className="flex flex-col h-full">
-      <div className="flex gap-1 p-2 border-b">
+      <div className="flex gap-1 p-2 border-b border-border/60">
         {files.map(([name]) => (
-          <button key={name} onClick={() => setActive(name)} className={cn("px-3 py-1 rounded text-xs font-mono", active === name ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}>{name}</button>
+          <button key={name} onClick={() => setActive(name)} className={cn("px-3 py-1 rounded text-xs font-mono", active === name ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/60")}>{name}</button>
         ))}
       </div>
       <div className="flex-1 overflow-auto p-3 text-[11px] leading-relaxed bg-muted/20 [&_pre]:m-0 [&_pre]:bg-transparent [&_code]:text-[11px]">

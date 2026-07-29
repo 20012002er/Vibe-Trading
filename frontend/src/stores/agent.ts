@@ -2,10 +2,21 @@ import { create } from "zustand";
 import type { AgentMessage, SwarmRunStatus, ToolCallEntry } from "@/types/agent";
 
 const SESSION_CACHE_MAX = 5;
-const _sessionCache = new Map<string, AgentMessage[]>();
+
+export interface AgentMessageMeta {
+  attachment?: { filename: string };
+  swarmMode?: boolean;
+  goalMode?: boolean;
+  requestText?: string;
+}
+
+export type StoredAgentMessage = AgentMessage & { meta?: AgentMessageMeta };
+
+const _sessionCache = new Map<string, StoredAgentMessage[]>();
+const _swarmSessionCache = new Map<string, Record<string, SwarmRunStatus>>();
 
 interface AgentState {
-  messages: AgentMessage[];
+  messages: StoredAgentMessage[];
   sessionId: string | null;
   status: "idle" | "streaming" | "error";
   streamingText: string;
@@ -15,29 +26,32 @@ interface AgentState {
   streamingSessionId: string | null;
 
   toolCalls: ToolCallEntry[];
+  swarmRuns: Record<string, SwarmRunStatus>;
 
   sseStatus: "disconnected" | "connected" | "reconnecting";
   sseRetryAttempt: number;
 
-  addMessage: (msg: Omit<AgentMessage, "id"> & { id?: string }) => void;
+  addMessage: (msg: Omit<StoredAgentMessage, "id"> & { id?: string }) => void;
   appendDelta: (delta: string) => void;
   setStatus: (s: AgentState["status"]) => void;
   setSessionId: (id: string | null) => void;
-  loadHistory: (msgs: AgentMessage[]) => void;
+  loadHistory: (msgs: StoredAgentMessage[]) => void;
 
   addToolCall: (entry: ToolCallEntry) => void;
   updateToolCall: (id: string, update: Partial<ToolCallEntry>) => void;
+  updateOldestRunningToolCall: (tool: string, update: Partial<ToolCallEntry>) => void;
   upsertSwarmStatus: (status: SwarmRunStatus) => void;
   updateSwarmStatus: (runId: string, updater: (status: SwarmRunStatus) => SwarmRunStatus) => void;
 
-  cacheSession: (sid: string, msgs: AgentMessage[]) => void;
-  getCachedSession: (sid: string) => AgentMessage[] | undefined;
+  cacheSession: (sid: string, msgs: StoredAgentMessage[]) => void;
+  getCachedSession: (sid: string) => StoredAgentMessage[] | undefined;
 
   clearStreaming: () => void;
+  clearStreamingSession: (sid: string) => void;
 
   setSseStatus: (s: AgentState["sseStatus"], retryAttempt?: number) => void;
 
-  switchSession: (sid: string, msgs?: AgentMessage[]) => void;
+  switchSession: (sid: string, msgs?: StoredAgentMessage[]) => void;
   sessionLoading: boolean;
   setSessionLoading: (v: boolean) => void;
 
@@ -54,6 +68,7 @@ export const useAgentStore = create<AgentState>((set) => ({
   streamingText: "",
   streamingSessionId: null,
   toolCalls: [],
+  swarmRuns: {},
   sseStatus: "disconnected",
   sseRetryAttempt: 0,
   sessionLoading: false,
@@ -75,7 +90,22 @@ export const useAgentStore = create<AgentState>((set) => ({
       return patch;
     }),
   setSessionId: (sessionId) => set({ sessionId }),
-  loadHistory: (msgs) => set({ messages: msgs }),
+  loadHistory: (msgs) =>
+    set((s) => {
+      const historicalSwarmIds = new Set(
+        msgs.flatMap((msg) => msg.swarmRunId ? [msg.swarmRunId] : []),
+      );
+      const liveSwarmPlaceholders = s.messages.filter((msg) => (
+        msg.type === "swarm_status" &&
+        msg.swarmRunId &&
+        s.swarmRuns[msg.swarmRunId] &&
+        !historicalSwarmIds.has(msg.swarmRunId)
+      ));
+      return {
+        messages: [...msgs, ...liveSwarmPlaceholders]
+          .sort((a, b) => a.timestamp - b.timestamp),
+      };
+    }),
 
   addToolCall: (entry) =>
     set((s) => ({ toolCalls: [...s.toolCalls, entry] })),
@@ -83,15 +113,30 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((s) => ({
       toolCalls: s.toolCalls.map((tc) => tc.id === id ? { ...tc, ...update } : tc),
     })),
+  updateOldestRunningToolCall: (tool, update) =>
+    set((s) => {
+      let idx = -1;
+      for (let i = 0; i < s.toolCalls.length; i += 1) {
+        if (s.toolCalls[i].tool === tool && s.toolCalls[i].status === "running") {
+          idx = i;
+          break;
+        }
+      }
+      if (idx < 0) return {};
+      const toolCalls = [...s.toolCalls];
+      toolCalls[idx] = { ...toolCalls[idx], ...update };
+      return { toolCalls };
+    }),
   upsertSwarmStatus: (swarmStatus) =>
     set((s) => {
       const idx = s.messages.findIndex((m) => m.type === "swarm_status" && m.swarmRunId === swarmStatus.runId);
       if (idx >= 0) {
-        const messages = [...s.messages];
-        messages[idx] = { ...messages[idx], swarmStatus, timestamp: Date.now() };
-        return { messages };
+        return {
+          swarmRuns: { ...s.swarmRuns, [swarmStatus.runId]: swarmStatus },
+        };
       }
       return {
+        swarmRuns: { ...s.swarmRuns, [swarmStatus.runId]: swarmStatus },
         messages: [
           ...s.messages,
           {
@@ -99,7 +144,6 @@ export const useAgentStore = create<AgentState>((set) => ({
             type: "swarm_status",
             content: "",
             swarmRunId: swarmStatus.runId,
-            swarmStatus,
             timestamp: Date.now(),
           },
         ],
@@ -107,25 +151,33 @@ export const useAgentStore = create<AgentState>((set) => ({
     }),
   updateSwarmStatus: (runId, updater) =>
     set((s) => {
-      const idx = s.messages.findIndex((m) => m.type === "swarm_status" && m.swarmRunId === runId && m.swarmStatus);
-      if (idx < 0) return {};
-      const messages = [...s.messages];
-      const current = messages[idx].swarmStatus!;
-      messages[idx] = { ...messages[idx], swarmStatus: updater(current), timestamp: Date.now() };
-      return { messages };
+      const current = s.swarmRuns[runId];
+      if (!current) return {};
+      return {
+        swarmRuns: { ...s.swarmRuns, [runId]: updater(current) },
+      };
     }),
 
-  cacheSession: (sid, msgs) => {
-    _sessionCache.delete(sid);
-    _sessionCache.set(sid, msgs);
-    if (_sessionCache.size > SESSION_CACHE_MAX) {
-      const oldest = _sessionCache.keys().next().value;
-      if (oldest) _sessionCache.delete(oldest);
-    }
-  },
+  cacheSession: (sid, msgs) =>
+    set((s) => {
+      _sessionCache.delete(sid);
+      _sessionCache.set(sid, msgs);
+      _swarmSessionCache.delete(sid);
+      _swarmSessionCache.set(sid, s.swarmRuns);
+      if (_sessionCache.size > SESSION_CACHE_MAX) {
+        const oldest = _sessionCache.keys().next().value;
+        if (oldest) {
+          _sessionCache.delete(oldest);
+          _swarmSessionCache.delete(oldest);
+        }
+      }
+      return {};
+    }),
   getCachedSession: (sid) => _sessionCache.get(sid),
 
   clearStreaming: () => set({ streamingText: "" }),
+  clearStreamingSession: (sid) =>
+    set((s) => s.streamingSessionId === sid ? { streamingSessionId: null } : {}),
 
   setSseStatus: (sseStatus, retryAttempt) =>
     set({ sseStatus, sseRetryAttempt: retryAttempt ?? 0 }),
@@ -138,6 +190,7 @@ export const useAgentStore = create<AgentState>((set) => ({
       status: "idle",
       streamingText: "",
       toolCalls: [],
+      swarmRuns: msgs ? (_swarmSessionCache.get(sid) ?? {}) : {},
       sessionLoading: !msgs,
       // Preserve streamingSessionId so the sidebar spinner stays visible
       // when switching away from a running session.
@@ -151,7 +204,7 @@ export const useAgentStore = create<AgentState>((set) => ({
     _id = 0;
     set({
       messages: [], status: "idle", streamingText: "",
-      sessionId: null, toolCalls: [], sessionLoading: false,
+      sessionId: null, toolCalls: [], swarmRuns: {}, sessionLoading: false,
       streamingSessionId: null,
     });
   },

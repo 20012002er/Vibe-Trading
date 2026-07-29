@@ -3,14 +3,18 @@ import { useEffect, useRef, useState, useMemo, useCallback, type FormEvent } fro
 import { useSearchParams } from "react-router";
 import { Send, Loader2, ArrowDown, Square, Download, Plus, Paperclip, X, Users, Target, ChevronDown, Pencil, Check, Play, OctagonX, Activity, Ban, CheckCircle2, Landmark } from "lucide-react";
 import { toast } from "sonner";
-import { useAgentStore } from "@/stores/agent";
+import {
+  useAgentStore,
+  type AgentMessageMeta,
+  type StoredAgentMessage,
+} from "@/stores/agent";
 import { useSSE } from "@/hooks/useSSE";
 import { ApiError, AUTH_REQUIRED_MESSAGE, api, isAuthRequiredError, type GoalSnapshot, type MandateProposal, type MandateCommitted, type LiveAction, type LiveHalted, type LiveStatus } from "@/lib/api";
 import { isReportWorthyRun } from "@/lib/runReports";
-import type { AgentMessage, ToolCallEntry } from "@/types/agent";
+import type { AgentMessage, SwarmRunStatus, ToolCallEntry } from "@/types/agent";
 import { AgentAvatar } from "@/components/chat/AgentAvatar";
 import { WelcomeScreen } from "@/components/chat/WelcomeScreen";
-import { MessageBubble } from "@/components/chat/MessageBubble";
+import { MarkdownContent, MessageBubble } from "@/components/chat/MessageBubble";
 import { ThinkingTimeline } from "@/components/chat/ThinkingTimeline";
 import { ConversationTimeline } from "@/components/chat/ConversationTimeline";
 import { ToolProgressIndicator } from "@/components/chat/ToolProgressIndicator";
@@ -25,19 +29,27 @@ import {
 
 /* ---------- Message grouping ---------- */
 type MsgGroup =
-  | { kind: "single"; msg: AgentMessage }
-  | { kind: "timeline"; msgs: AgentMessage[] };
+  | { kind: "single"; msg: StoredAgentMessage; msgIdx: number }
+  | { kind: "timeline"; msgs: StoredAgentMessage[]; msgIdx: number };
 
-function groupMessages(msgs: AgentMessage[]): MsgGroup[] {
+function groupMessages(msgs: StoredAgentMessage[]): MsgGroup[] {
   const out: MsgGroup[] = [];
-  let buf: AgentMessage[] = [];
-  const flush = () => { if (buf.length) { out.push({ kind: "timeline", msgs: [...buf] }); buf = []; } };
-  for (const m of msgs) {
+  let buf: StoredAgentMessage[] = [];
+  let bufStartIdx = -1;
+  const flush = () => {
+    if (buf.length) {
+      out.push({ kind: "timeline", msgs: [...buf], msgIdx: bufStartIdx });
+      buf = [];
+      bufStartIdx = -1;
+    }
+  };
+  for (const [msgIdx, m] of msgs.entries()) {
     if (["thinking", "tool_call", "tool_result", "compact"].includes(m.type)) {
+      if (bufStartIdx < 0) bufStartIdx = msgIdx;
       buf.push(m);
     } else {
       flush();
-      out.push({ kind: "single", msg: m });
+      out.push({ kind: "single", msg: m, msgIdx });
     }
   }
   flush();
@@ -51,10 +63,63 @@ const act = () => useAgentStore.getState();
 
 /** Poll cadence for the shared `GET /live/status` snapshot. */
 const LIVE_STATUS_POLL_INTERVAL_MS = 15_000;
+const STREAM_FLUSH_INTERVAL_MS = 80;
+const TIMELINE_WINDOW_SIZE = 160;
 const CONNECTOR_CHECK_PROMPT =
   "List my trading connector profiles, show which one is selected, then check that selected connector. If it is not ready, tell me exactly what setup step is missing. Do not place or modify orders.";
 const CONNECTOR_PORTFOLIO_PROMPT =
   "Use the selected trading connector profile to summarize my account, positions, concentration, cash, and portfolio risk. Do not place or modify orders.";
+const SWARM_PROMPT_PREFIX =
+  "[Swarm Team Mode] Use the swarm tool to assemble the best specialist team for this task. Auto-select the most appropriate preset.\n\n";
+const GOAL_KICKOFF_PREFIX = [
+  "Start working on this research goal now.",
+  "Keep it research-only, use available tools when evidence is needed, add concrete evidence to the goal ledger, and keep going until the goal is complete, blocked, waiting for user input, or budget-limited.",
+  "",
+  "Goal: ",
+].join("\n");
+const GOAL_CONTINUE_PREFIX = [
+  "Continue the active research goal.",
+  "Use real available tools as needed, add evidence to the goal ledger, and only stop when the goal is complete, blocked, waiting for user input, or budget-limited.",
+  "",
+  "Goal: ",
+].join("\n");
+
+function toDisplayPrompt(content: string): {
+  content: string;
+  meta?: AgentMessageMeta;
+} {
+  let display = content;
+  const meta: AgentMessageMeta = { requestText: content };
+  const attachmentMatch = display.match(
+    /^\[Uploaded file: (.+), path: [^\n]*\]\n\n/,
+  );
+  if (attachmentMatch) {
+    meta.attachment = { filename: attachmentMatch[1] };
+    display = display.slice(attachmentMatch[0].length);
+  }
+  if (display.startsWith(SWARM_PROMPT_PREFIX)) {
+    meta.swarmMode = true;
+    display = display.slice(SWARM_PROMPT_PREFIX.length);
+  }
+  if (display.startsWith(GOAL_KICKOFF_PREFIX)) {
+    meta.goalMode = true;
+    display = display.slice(GOAL_KICKOFF_PREFIX.length);
+  } else if (display.startsWith(GOAL_CONTINUE_PREFIX)) {
+    meta.goalMode = true;
+    display = display.slice(GOAL_CONTINUE_PREFIX.length);
+    const detailsStart = [
+      display.indexOf("\nOpen criteria:"),
+      display.indexOf("\nAll criteria appear covered;"),
+    ].filter((index) => index >= 0);
+    if (detailsStart.length > 0) {
+      display = display.slice(0, Math.min(...detailsStart));
+    }
+  }
+  return {
+    content: display,
+    meta,
+  };
+}
 
 /* ---------- Connector runtime channel ----------
  * Mandate proposals and live-action chips render as standalone timeline items,
@@ -187,12 +252,7 @@ function latestGoalEvidence(snapshot: GoalSnapshot) {
 }
 
 function goalKickoffPrompt(objective: string): string {
-  return [
-    "Start working on this research goal now.",
-    "Keep it research-only, use available tools when evidence is needed, add concrete evidence to the goal ledger, and keep going until the goal is complete, blocked, waiting for user input, or budget-limited.",
-    "",
-    `Goal: ${objective}`,
-  ].join("\n");
+  return `${GOAL_KICKOFF_PREFIX}${objective}`;
 }
 
 function goalContinuePrompt(snapshot: GoalSnapshot): string {
@@ -229,6 +289,16 @@ export function Agent() {
   /* tool_progress coalescing — keep latest payload per-tool, flush once per rAF. */
   const pendingProgressRef = useRef<Map<string, NonNullable<ToolCallEntry["progress"]>>>(new Map());
   const progressRafRef = useRef(0);
+  const pendingTextRef = useRef("");
+  const pendingReasoningRef = useRef<boolean | null>(null);
+  const streamFlushTimerRef = useRef(0);
+  const pendingSwarmEventsRef = useRef<Map<string, unknown[]>>(new Map());
+  const swarmRafRef = useRef(0);
+  const toolCallSeqRef = useRef(0);
+  const replayAttemptSeenRef = useRef(false);
+  const replayCheckTimerRef = useRef(0);
+  const smoothScrollingRef = useRef(false);
+  const smoothScrollTimerRef = useRef(0);
 
   const [attachment, setAttachment] = useState<{ filename: string; filePath: string } | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -256,6 +326,8 @@ export function Agent() {
    * items (audit M2: always-available global halt — SPEC Consent §4). */
   const [liveStatus, setLiveStatus] = useState<LiveStatus | null>(null);
   const [reasoningActive, setReasoningActive] = useState(false);
+  const [visibleRowCount, setVisibleRowCount] = useState(TIMELINE_WINDOW_SIZE);
+  const visibleRowsSessionRef = useRef<string | null>(null);
   /* The status endpoint is not wired on every backend; a 404/501 hides the panel
    * and removes status from the kill-switch visibility condition. */
   const [liveStatusUnavailable, setLiveStatusUnavailable] = useState(false);
@@ -265,7 +337,9 @@ export function Agent() {
   const status = useAgentStore(s => s.status);
   const sessionId = useAgentStore(s => s.sessionId);
   const toolCalls = useAgentStore(s => s.toolCalls);
+  const swarmRuns = useAgentStore(s => s.swarmRuns);
   const sessionLoading = useAgentStore(s => s.sessionLoading);
+  const previousStatusRef = useRef(status);
 
   const { connect, disconnect, onStatusChange } = useSSE();
 
@@ -280,6 +354,7 @@ export function Agent() {
 
   const rafRef = useRef(0);
   const scrollToBottom = useCallback(() => {
+    if (smoothScrollingRef.current) return;
     if (!isNearBottom()) {
       setShowScrollBtn(true);
       return;
@@ -290,18 +365,107 @@ export function Agent() {
     });
   }, [isNearBottom]);
 
-  const forceScrollToBottom = useCallback(() => {
+  const forceScrollToBottom = useCallback((smooth = false) => {
     setShowScrollBtn(false);
+    window.clearTimeout(smoothScrollTimerRef.current);
+    smoothScrollingRef.current = smooth;
     requestAnimationFrame(() => {
-      if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
+      if (!listRef.current) return;
+      if (smooth) {
+        listRef.current.scrollTo({
+          top: listRef.current.scrollHeight,
+          behavior: "smooth",
+        });
+        smoothScrollTimerRef.current = window.setTimeout(() => {
+          smoothScrollingRef.current = false;
+          if (isNearBottom()) setShowScrollBtn(false);
+        }, 500);
+      } else {
+        listRef.current.scrollTop = listRef.current.scrollHeight;
+        smoothScrollingRef.current = false;
+      }
+    });
+  }, [isNearBottom]);
+
+  const flushPendingStreamUpdate = useCallback(() => {
+    window.clearTimeout(streamFlushTimerRef.current);
+    streamFlushTimerRef.current = 0;
+    const pendingText = pendingTextRef.current;
+    const pendingReasoning = pendingReasoningRef.current;
+    pendingTextRef.current = "";
+    pendingReasoningRef.current = null;
+    if (pendingReasoning !== null) setReasoningActive(pendingReasoning);
+    if (pendingText) act().appendDelta(pendingText);
+    if (pendingText || pendingReasoning !== null) scrollToBottom();
+    return pendingText;
+  }, [scrollToBottom]);
+
+  const cancelPendingStreamFlush = useCallback(() => {
+    window.clearTimeout(streamFlushTimerRef.current);
+    streamFlushTimerRef.current = 0;
+    pendingTextRef.current = "";
+    pendingReasoningRef.current = null;
+  }, []);
+
+  const queueStreamUpdate = useCallback((text: string, reasoning: boolean) => {
+    pendingTextRef.current += text;
+    pendingReasoningRef.current = reasoning;
+    if (streamFlushTimerRef.current) return;
+    streamFlushTimerRef.current = window.setTimeout(
+      flushPendingStreamUpdate,
+      STREAM_FLUSH_INTERVAL_MS,
+    );
+  }, [flushPendingStreamUpdate]);
+
+  const clearStreamingView = useCallback(() => {
+    cancelPendingStreamFlush();
+    setReasoningActive(false);
+    act().clearStreaming();
+  }, [cancelPendingStreamFlush]);
+
+  const resetComposerInput = useCallback(() => {
+    setInput("");
+    if (inputRef.current) inputRef.current.style.height = "auto";
+  }, []);
+
+  const fillComposer = useCallback((prompt: string) => {
+    setInput(prompt);
+    requestAnimationFrame(() => {
+      const composer = inputRef.current;
+      if (!composer) return;
+      composer.focus({ preventScroll: true });
+      composer.style.height = "auto";
+      composer.style.height = `${composer.scrollHeight}px`;
     });
   }, []);
+
+  useEffect(() => {
+    const previous = previousStatusRef.current;
+    previousStatusRef.current = status;
+    if (previous === "streaming" && status !== "streaming") {
+      requestAnimationFrame(() => {
+        const selection = window.getSelection();
+        if (selection && !selection.isCollapsed) return;
+        const active = document.activeElement;
+        if (
+          active &&
+          active !== document.body &&
+          active !== inputRef.current &&
+          !active.closest("[data-agent-composer]")
+        ) {
+          return;
+        }
+        inputRef.current?.focus({ preventScroll: true });
+      });
+    }
+  }, [status]);
 
   /* Track scroll position to show/hide scroll button */
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
     const onScroll = () => {
+      if (smoothScrollingRef.current) return;
       if (isNearBottom()) setShowScrollBtn(false);
     };
     el.addEventListener("scroll", onScroll, { passive: true });
@@ -311,16 +475,33 @@ export function Agent() {
   useEffect(() => {
     onStatusChange((s) => {
       act().setSseStatus(s);
+      if (s === "connected") {
+        const connectedSid = sseSessionRef.current;
+        window.clearTimeout(replayCheckTimerRef.current);
+        replayCheckTimerRef.current = window.setTimeout(() => {
+          const store = act();
+          if (
+            connectedSid &&
+            sseSessionRef.current === connectedSid &&
+            !replayAttemptSeenRef.current &&
+            store.status !== "streaming"
+          ) {
+            store.clearStreamingSession(connectedSid);
+          }
+        }, 300);
+      }
       if (s === "reconnecting" && prevSseStatusRef.current === "connected") toast.warning(t('agent.connectionLostReconnect'));
       else if (s === "connected" && prevSseStatusRef.current === "reconnecting") toast.success(t('agent.connectionRestored'));
       prevSseStatusRef.current = s;
     });
-  }, [onStatusChange]);
+  }, [onStatusChange, t]);
 
   const doDisconnect = useCallback(() => {
+    cancelPendingStreamFlush();
+    window.clearTimeout(replayCheckTimerRef.current);
     disconnect();
     sseSessionRef.current = null;
-  }, [disconnect]);
+  }, [cancelPendingStreamFlush, disconnect]);
 
   const loadGoalSnapshot = useCallback(async (sid?: string | null) => {
     const targetSession = sid || act().sessionId;
@@ -350,14 +531,21 @@ export function Agent() {
     try {
       const msgs = await api.getSessionMessages(sid);
       if (genRef.current !== gen) return;
-      const agentMsgs: AgentMessage[] = [];
+      const agentMsgs: StoredAgentMessage[] = [];
       for (const m of msgs) {
         const meta = m.metadata as Record<string, unknown> | undefined;
         const runId = meta?.run_id as string | undefined;
         const metrics = meta?.metrics as Record<string, number> | undefined;
         const ts = new Date(m.created_at).getTime();
         if (m.role === "user") {
-          agentMsgs.push({ id: m.message_id, type: "user", content: m.content, timestamp: ts });
+          const displayPrompt = toDisplayPrompt(m.content);
+          agentMsgs.push({
+            id: m.message_id,
+            type: "user",
+            content: displayPrompt.content,
+            meta: displayPrompt.meta,
+            timestamp: ts,
+          });
         } else if (runId) {
           // Show text answer first (if non-empty), then chart card
           if (m.content && m.content !== "Strategy execution completed.") {
@@ -421,11 +609,10 @@ export function Agent() {
         const storedMessages = await api.getSessionMessages(sid);
         const completed = storedMessages.some(
           (message) => message.role === "assistant" && message.linked_attempt_id === attemptId,
-        );
+          );
         if (completed) {
           if (act().sessionId !== sid) return true;
-          setReasoningActive(false);
-          act().clearStreaming();
+          clearStreamingView();
           act().setStatus("idle");
           useAgentStore.setState({ toolCalls: [] });
           await refreshSessionMessages(sid);
@@ -437,10 +624,13 @@ export function Agent() {
       await new Promise<void>((resolve) => window.setTimeout(resolve, 800));
     }
     return false;
-  }, [refreshSessionMessages]);
+  }, [clearStreamingView, refreshSessionMessages]);
 
   const setupSSE = useCallback((sid: string) => {
     if (sseSessionRef.current === sid) return;
+    cancelPendingStreamFlush();
+    window.clearTimeout(replayCheckTimerRef.current);
+    replayAttemptSeenRef.current = false;
     disconnect();
     sseSessionRef.current = sid;
 
@@ -449,20 +639,19 @@ export function Agent() {
     connect(api.sseUrl(sid, { replay: "active" }), {
       text_delta: (d) => {
         touch();
-        setReasoningActive(false);
-        act().appendDelta(String(d.delta || ""));
-        scrollToBottom();
+        replayAttemptSeenRef.current = true;
+        if (act().status !== "streaming") act().setStatus("streaming");
+        queueStreamUpdate(String(d.delta || ""), false);
       },
       reasoning_delta: () => {
         touch();
-        setReasoningActive(true);
+        replayAttemptSeenRef.current = true;
+        queueStreamUpdate("", true);
         if (act().status !== "streaming") act().setStatus("streaming");
-        scrollToBottom();
       },
       stream_reset: () => {
         touch();
-        setReasoningActive(false);
-        act().clearStreaming();
+        clearStreamingView();
         if (act().status !== "streaming") act().setStatus("streaming");
         scrollToBottom();
       },
@@ -470,11 +659,13 @@ export function Agent() {
 
       tool_call: (d) => {
         touch();
-        setReasoningActive(false);
+        replayAttemptSeenRef.current = true;
+        queueStreamUpdate("", false);
         const toolName = String(d.tool || "");
+        toolCallSeqRef.current += 1;
         // Only update toolCalls tracker (no message creation during streaming)
         act().addToolCall({
-          id: toolName, tool: toolName,
+          id: `${toolName}#${toolCallSeqRef.current}`, tool: toolName,
           arguments: (d.arguments as Record<string, string>) ?? {},
           status: "running", timestamp: Date.now(),
         });
@@ -487,7 +678,7 @@ export function Agent() {
         // Drop any in-flight coalesced progress for this tool.
         pendingProgressRef.current.delete(toolName);
         // Only update tracker (no message creation during streaming)
-        act().updateToolCall(toolName, {
+        act().updateOldestRunningToolCall(toolName, {
           status: d.status === "ok" ? "ok" : "error",
           preview: String(d.preview || ""),
           elapsed_ms: Number(d.elapsed_ms || 0),
@@ -496,7 +687,7 @@ export function Agent() {
         });
         if (toolName === "run_swarm") {
           const fallback = buildSwarmStatusFromToolResultPreview(String(d.preview || ""));
-          if (fallback && !act().messages.some((m) => m.type === "swarm_status" && m.swarmRunId === fallback.runId)) {
+          if (fallback && !act().swarmRuns[fallback.runId]) {
             act().upsertSwarmStatus(fallback);
           }
         }
@@ -504,17 +695,19 @@ export function Agent() {
 
       tool_heartbeat: (d) => {
         touch();
+        replayAttemptSeenRef.current = true;
         // Keep streaming state alive during long-running tools (swarm, backtest)
         if (act().status !== "streaming") act().setStatus("streaming");
         const toolName = String(d.tool || "");
         if (!toolName) return;
-        act().updateToolCall(toolName, {
+        act().updateOldestRunningToolCall(toolName, {
           elapsed_s: Number(d.elapsed_s || 0),
         });
       },
 
       tool_progress: (d) => {
         touch();
+        replayAttemptSeenRef.current = true;
         const toolName = String(d.tool || "");
         if (!toolName) return;
         const payload: NonNullable<ToolCallEntry["progress"]> = {};
@@ -531,7 +724,7 @@ export function Agent() {
           if (pending.size === 0) return;
           const store = act();
           for (const [tool, progress] of pending) {
-            store.updateToolCall(tool, { progress });
+            store.updateOldestRunningToolCall(tool, { progress });
           }
           pending.clear();
         });
@@ -539,8 +732,33 @@ export function Agent() {
 
       compact: () => { touch(); },
 
+      "message.received": (d) => {
+        touch();
+        if (String(d.role || "") !== "user") return;
+        const messageId = String(d.message_id || "");
+        const requestText = String(d.content || "");
+        if (!messageId || !requestText || act().messages.some((msg) => msg.id === messageId)) return;
+        const now = Date.now();
+        const optimisticDuplicate = act().messages.some((msg) => (
+          msg.type === "user" &&
+          msg.meta?.requestText === requestText &&
+          now - msg.timestamp < 10_000
+        ));
+        if (optimisticDuplicate) return;
+        const displayPrompt = toDisplayPrompt(requestText);
+        act().addMessage({
+          id: messageId,
+          type: "user",
+          content: displayPrompt.content,
+          meta: displayPrompt.meta,
+          timestamp: now,
+        });
+        scrollToBottom();
+      },
+
       "attempt.created": () => {
         touch();
+        replayAttemptSeenRef.current = true;
         // Backend has created a new attempt — ensure streaming state is active
         // even if we connected mid-stream (SSE replay / page reload).
         if (act().status !== "streaming") act().setStatus("streaming");
@@ -548,6 +766,7 @@ export function Agent() {
 
       "attempt.started": () => {
         touch();
+        replayAttemptSeenRef.current = true;
         // Backend has begun executing the attempt. Re-affirm streaming state
         // so the UI shows a working indicator for reconnects and fresh loads.
         if (act().status !== "streaming") act().setStatus("streaming");
@@ -555,6 +774,8 @@ export function Agent() {
 
       "attempt.completed": async (d) => {
         touch();
+        const streamedAnswer = act().streamingText + pendingTextRef.current;
+        flushPendingStreamUpdate();
         setReasoningActive(false);
         const s = act();
         // Build ThinkingTimeline summary from accumulated toolCalls
@@ -575,7 +796,10 @@ export function Agent() {
         const runDir = String(d.run_dir || "");
         const runId = runDir ? runDir.split(/[/\\]/).pop() : undefined;
         const summary = String(d.summary || "");
-        if (summary) s.addMessage({ id: "", type: "answer", content: summary, timestamp: Date.now() });
+        const finalAnswer = summary.trim() ? summary : streamedAnswer;
+        if (finalAnswer) {
+          s.addMessage({ id: "", type: "answer", content: finalAnswer, timestamp: Date.now() });
+        }
 
         // Detect Shadow Account id if render_shadow_report fired successfully this turn
         const shadowCall = completedTools.find(
@@ -583,6 +807,12 @@ export function Agent() {
         );
         const shadowMatch = shadowCall?.preview?.match(/"shadow_id"\s*:\s*"(shadow_[A-Za-z0-9_]+)"/);
         const shadowId = shadowMatch?.[1];
+
+        // The transcript is already complete. Drop transient state before the
+        // optional report fetch so answer/tool progress never overlap.
+        s.setStatus("idle");
+        useAgentStore.setState({ toolCalls: [] });
+        scrollToBottom();
 
         // Show RunCompleteCard when the turn produced backtest metrics or a shadow report
         if (runId) {
@@ -612,16 +842,12 @@ export function Agent() {
           s.addMessage({ id: "", type: "run_complete", content: "", shadowId, timestamp: Date.now() });
         }
 
-        // Reset
-        s.setStatus("idle");
-        useAgentStore.setState({ toolCalls: [] });
         scrollToBottom();
       },
 
       "attempt.failed": (d) => {
         touch();
-        setReasoningActive(false);
-        act().clearStreaming();
+        clearStreamingView();
         act().addMessage({ id: "", type: "error", content: String(d.error || "Execution failed"), timestamp: Date.now() });
         act().setStatus("idle");
         // Clear stale toolCalls so the next turn's running indicator doesn't
@@ -637,6 +863,7 @@ export function Agent() {
 
       "swarm.started": (d) => {
         touch();
+        replayAttemptSeenRef.current = true;
         const status = buildSwarmStatusFromStarted(d);
         if (!status) return;
         act().upsertSwarmStatus(status);
@@ -645,12 +872,30 @@ export function Agent() {
 
       "swarm.event": (d) => {
         touch();
+        replayAttemptSeenRef.current = true;
         if (act().status !== "streaming") act().setStatus("streaming");
         const runId = String(d.run_id || "");
         const event = d.event;
         if (!runId || !event) return;
-        act().updateSwarmStatus(runId, (current) => applySwarmEvent(current, event));
-        scrollToBottom();
+        const pending = pendingSwarmEventsRef.current.get(runId) ?? [];
+        pending.push(event);
+        pendingSwarmEventsRef.current.set(runId, pending);
+        if (swarmRafRef.current) return;
+        swarmRafRef.current = requestAnimationFrame(() => {
+          swarmRafRef.current = 0;
+          const batches = pendingSwarmEventsRef.current;
+          pendingSwarmEventsRef.current = new Map();
+          const store = act();
+          for (const [pendingRunId, events] of batches) {
+            store.updateSwarmStatus(pendingRunId, (current) => (
+              events.reduce<SwarmRunStatus>(
+                (next, pendingEvent) => applySwarmEvent(next, pendingEvent),
+                current,
+              )
+            ));
+          }
+          scrollToBottom();
+        });
       },
 
       "goal.evidence": () => {
@@ -731,7 +976,16 @@ export function Agent() {
       heartbeat: () => {},
       reconnect: (d) => { act().setSseStatus("reconnecting", Number(d.attempt ?? 0)); },
     });
-  }, [connect, disconnect, loadGoalSnapshot, scrollToBottom]);
+  }, [
+    cancelPendingStreamFlush,
+    clearStreamingView,
+    connect,
+    disconnect,
+    flushPendingStreamUpdate,
+    loadGoalSnapshot,
+    queueStreamUpdate,
+    scrollToBottom,
+  ]);
 
   useEffect(() => {
     const { sessionId: curSid, messages: curMsgs, cacheSession, reset, getCachedSession, switchSession } = act();
@@ -752,9 +1006,10 @@ export function Agent() {
       switchSession(urlSessionId, cached);
       if (cached) {
         setTimeout(() => forceScrollToBottom(), 50);
-      } else {
-        loadSessionMessages(urlSessionId, gen);
       }
+      // Cached rows provide an instant shell; REST remains authoritative for a
+      // turn that completed while this session was off-screen.
+      loadSessionMessages(urlSessionId, gen);
       setupSSE(urlSessionId);
     } else if (urlSessionId && urlSessionId === curSid && sseSessionRef.current !== urlSessionId) {
       // #229: returning to the SAME session after the page was unmounted (user
@@ -828,7 +1083,16 @@ export function Agent() {
     loadGoalSnapshot(sessionId);
   }, [sessionId, loadGoalSnapshot]);
 
-  useEffect(() => () => doDisconnect(), [doDisconnect]);
+  useEffect(() => () => {
+    doDisconnect();
+    cancelAnimationFrame(progressRafRef.current);
+    pendingProgressRef.current.clear();
+    cancelAnimationFrame(swarmRafRef.current);
+    pendingSwarmEventsRef.current.clear();
+    cancelAnimationFrame(rafRef.current);
+    window.clearTimeout(smoothScrollTimerRef.current);
+    window.clearTimeout(replayCheckTimerRef.current);
+  }, [doDisconnect]);
 
   useEffect(() => {
     api.getLLMSettings().then((s) => {
@@ -848,19 +1112,32 @@ export function Agent() {
     lastEventRef.current = Date.now();
     const timer = setInterval(() => {
       if (lastEventRef.current && Date.now() - lastEventRef.current > sseTimeoutMsRef.current && act().status === "streaming") {
-        setReasoningActive(false);
+        clearStreamingView();
         act().setStatus("idle");
         toast.warning(t('agent.executionTimedOut'));
       }
     }, 10_000);
     return () => clearInterval(timer);
-  }, [status]);
+  }, [clearStreamingView, status]);
 
-  const runPrompt = async (prompt: string) => {
+  const ensureGoalSession = useCallback(async (title: string): Promise<string> => {
+    let sid = act().sessionId;
+    if (sid) return sid;
+    const session = await api.createSession(title.slice(0, 50));
+    sid = session.session_id;
+    pendingGoalSessionRef.current = sid;
+    act().setSessionId(sid);
+    setSearchParams({ session: sid }, { replace: true });
+    setupSSE(sid);
+    return sid;
+  }, [setSearchParams, setupSSE]);
+
+  const runPrompt = useCallback(async (prompt: string) => {
     if (!prompt.trim() || status === "streaming") return;
+    clearStreamingView();
 
     if (goalComposerActive) {
-      setInput("");
+      resetComposerInput();
       inputRef.current?.focus();
       try {
         const sid = await ensureGoalSession(prompt);
@@ -870,7 +1147,13 @@ export function Agent() {
         setGoalDetailsOpen(true);
         toast.success(t('agent.researchGoalAttached'));
         const kickoff = goalKickoffPrompt(prompt);
-        act().addMessage({ id: "", type: "user", content: kickoff, timestamp: Date.now() });
+        act().addMessage({
+          id: "",
+          type: "user",
+          content: prompt,
+          meta: { goalMode: true, requestText: kickoff },
+          timestamp: Date.now(),
+        });
         act().setStatus("streaming");
         forceScrollToBottom();
         setupSSE(sid);
@@ -884,19 +1167,30 @@ export function Agent() {
     }
 
     let finalPrompt = prompt;
+    const displayPrompt = toDisplayPrompt(prompt);
+    const messageMeta: AgentMessageMeta = { ...displayPrompt.meta };
 
     // Swarm mode: let agent auto-select the right preset
     if (swarmPreset) {
+      messageMeta.swarmMode = true;
       setSwarmPreset(null);
-      finalPrompt = `[Swarm Team Mode] Use the swarm tool to assemble the best specialist team for this task. Auto-select the most appropriate preset.\n\n${prompt}`;
+      finalPrompt = `${SWARM_PROMPT_PREFIX}${prompt}`;
     }
 
     if (attachment) {
+      messageMeta.attachment = { filename: attachment.filename };
       finalPrompt = `[Uploaded file: ${attachment.filename}, path: ${attachment.filePath}]\n\n${finalPrompt}`;
       setAttachment(null);
     }
-    setInput("");
-    act().addMessage({ id: "", type: "user", content: finalPrompt, timestamp: Date.now() });
+    messageMeta.requestText = finalPrompt;
+    resetComposerInput();
+    act().addMessage({
+      id: "",
+      type: "user",
+      content: displayPrompt.content,
+      meta: Object.keys(messageMeta).length > 0 ? messageMeta : undefined,
+      timestamp: Date.now(),
+    });
     act().setStatus("streaming");
     forceScrollToBottom();
     inputRef.current?.focus();
@@ -918,23 +1212,25 @@ export function Agent() {
       toast.error(message);
       act().addMessage({ id: "", type: "error", content: message, timestamp: Date.now() });
     }
-  };
-
-  const ensureGoalSession = useCallback(async (title: string): Promise<string> => {
-    let sid = act().sessionId;
-    if (sid) return sid;
-    const session = await api.createSession(title.slice(0, 50));
-    sid = session.session_id;
-    pendingGoalSessionRef.current = sid;
-    act().setSessionId(sid);
-    setSearchParams({ session: sid }, { replace: true });
-    setupSSE(sid);
-    return sid;
-  }, [setSearchParams, setupSSE]);
+  }, [
+    attachment,
+    clearStreamingView,
+    ensureGoalSession,
+    forceScrollToBottom,
+    goalComposerActive,
+    resetComposerInput,
+    setSearchParams,
+    setupSSE,
+    status,
+    swarmPreset,
+    syncCompletedAttempt,
+    t,
+  ]);
 
   const handleSubmit = (e: FormEvent) => { e.preventDefault(); runPrompt(input.trim()); };
 
   const handleCancel = async () => {
+    cancelPendingStreamFlush();
     setReasoningActive(false);
     if (!sessionId) {
       act().setStatus("idle");
@@ -1016,7 +1312,13 @@ export function Agent() {
   const handleContinueGoal = useCallback(async () => {
     if (!sessionId || !goalSnapshot || status === "streaming") return;
     const prompt = goalContinuePrompt(goalSnapshot);
-    act().addMessage({ id: "", type: "user", content: prompt, timestamp: Date.now() });
+    act().addMessage({
+      id: "",
+      type: "user",
+      content: t("agent.continueGoalMessage" as never, { goal: goalSnapshot.goal.objective }),
+      meta: { goalMode: true, requestText: prompt },
+      timestamp: Date.now(),
+    });
     act().setStatus("streaming");
     forceScrollToBottom();
     inputRef.current?.focus();
@@ -1030,7 +1332,7 @@ export function Agent() {
       toast.error(message);
       act().addMessage({ id: "", type: "error", content: message, timestamp: Date.now() });
     }
-  }, [forceScrollToBottom, goalSnapshot, sessionId, setupSSE, status, syncCompletedAttempt]);
+  }, [forceScrollToBottom, goalSnapshot, sessionId, setupSSE, status, syncCompletedAttempt, t]);
 
   const handleRetry = useCallback((errorMsg: AgentMessage) => {
     if (status === "streaming") return;
@@ -1041,13 +1343,13 @@ export function Agent() {
     let userContent: string | null = null;
     for (let i = errorIdx - 1; i >= 0; i--) {
       if (msgs[i].type === "user") {
-        userContent = msgs[i].content;
+        userContent = msgs[i].meta?.requestText || msgs[i].content;
         break;
       }
     }
     if (!userContent) return;
     runPrompt(userContent);
-  }, [status]);
+  }, [runPrompt, status]);
 
   const handleExport = () => {
     if (messages.length === 0) return;
@@ -1063,7 +1365,8 @@ export function Agent() {
       } else if (msg.type === "tool_call") {
         lines.push(`> Tool call: ${msg.tool || "unknown"}`, ``);
       } else if (msg.type === "swarm_status") {
-        lines.push(`> Swarm status: ${msg.swarmStatus?.preset || "swarm"} ${msg.swarmStatus?.status || ""}`, ``);
+        const swarmStatus = msg.swarmRunId ? swarmRuns[msg.swarmRunId] : msg.swarmStatus;
+        lines.push(`> Swarm status: ${swarmStatus?.preset || "swarm"} ${swarmStatus?.status || ""}`, ``);
       } else if (msg.type === "run_complete") {
         lines.push(`> Backtest complete: ${msg.runId || ""}`, ``);
       }
@@ -1123,6 +1426,11 @@ export function Agent() {
   const groups = useMemo(() => groupMessages(messages), [messages]);
   const goalProgress = useMemo(() => getGoalProgress(goalSnapshot), [goalSnapshot]);
 
+  useEffect(() => {
+    visibleRowsSessionRef.current = sessionId;
+    setVisibleRowCount(TIMELINE_WINDOW_SIZE);
+  }, [sessionId]);
+
   /* Merge message groups with live-channel items, ordered by timestamp, so a
    * mandate proposal / live-action chip renders inline at the point it arrived. */
   type TimelineRow =
@@ -1131,15 +1439,48 @@ export function Agent() {
   const timelineRows = useMemo<TimelineRow[]>(() => {
     const rows: TimelineRow[] = groups.map((g, i) => {
       const ts = g.kind === "timeline" ? g.msgs[0].timestamp : g.msg.timestamp;
-      const key = g.kind === "timeline" ? `g_${g.msgs[0].id || g.msgs[0].timestamp}` : `g_${g.msg.id || g.msg.timestamp}_${i}`;
+      const key = g.kind === "timeline"
+        ? `${sessionId ?? "draft"}_timeline_${g.msgIdx}_${g.msgs[0].id || g.msgs[0].timestamp}`
+        : `${sessionId ?? "draft"}_message_${g.msgIdx}_${g.msg.id || g.msg.timestamp}_${i}`;
       return { sort: ts, render: "group", group: g, key };
     });
     for (const item of liveItems) {
-      const key = item.kind === "proposal" ? `lp_${item.proposal.proposal_id}` : `la_${item.action.audit_id || item.timestamp}`;
+      const key = item.kind === "proposal"
+        ? `${sessionId ?? "draft"}_lp_${item.proposal.proposal_id}`
+        : `${sessionId ?? "draft"}_la_${item.action.audit_id || item.timestamp}`;
       rows.push({ sort: item.timestamp, render: "live", item, key });
     }
     return rows.sort((a, b) => a.sort - b.sort);
-  }, [groups, liveItems]);
+  }, [groups, liveItems, sessionId]);
+
+  const visibleCountForSession = visibleRowsSessionRef.current === sessionId
+    ? visibleRowCount
+    : TIMELINE_WINDOW_SIZE;
+  const visibleTimelineStart = Math.max(0, timelineRows.length - visibleCountForSession);
+  const visibleTimelineRows = timelineRows.slice(visibleTimelineStart);
+  const mountRowSessionRef = useRef<string | null | undefined>(undefined);
+  const mountRowCountRef = useRef<number | null>(null);
+  if (mountRowSessionRef.current !== sessionId) {
+    mountRowSessionRef.current = sessionId;
+    mountRowCountRef.current = sessionLoading ? null : timelineRows.length;
+  } else if (mountRowCountRef.current === null && !sessionLoading) {
+    mountRowCountRef.current = timelineRows.length;
+  }
+
+  const handleLoadEarlier = useCallback(() => {
+    const container = listRef.current;
+    const previousScrollHeight = container?.scrollHeight ?? 0;
+    setVisibleRowCount((count) => Math.min(
+      timelineRows.length,
+      count + TIMELINE_WINDOW_SIZE,
+    ));
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (!container) return;
+        container.scrollTop += container.scrollHeight - previousScrollHeight;
+      });
+    });
+  }, [timelineRows.length]);
 
   /* Whether connector runtime activity could be active *anywhere* — the global kill switch must be
    * available whenever it could (audit M2 / SPEC Consent §4). Driven off both
@@ -1161,8 +1502,17 @@ export function Agent() {
 
   return (
     <div className="flex flex-col flex-1 min-w-0 overflow-hidden h-full">
-      <div ref={listRef} className="flex-1 overflow-auto p-6 scroll-smooth relative">
-        <div className="max-w-3xl mx-auto space-y-4">
+      <div
+        ref={listRef}
+        data-streaming={status === "streaming" ? "true" : undefined}
+        className="chat-scroll-container flex-1 overflow-auto p-6 relative"
+      >
+        <div
+          className={[
+            "max-w-3xl mx-auto space-y-8",
+            !sessionLoading && messages.length === 0 ? "min-h-full flex flex-col justify-end" : "",
+          ].join(" ")}
+        >
           {sessionLoading && (
             <div className="space-y-4 py-4">
               {[1, 2, 3].map(i => (
@@ -1176,43 +1526,82 @@ export function Agent() {
               ))}
             </div>
           )}
-          {!sessionLoading && messages.length === 0 && <WelcomeScreen onExample={runPrompt} />}
+          {!sessionLoading && messages.length === 0 && (
+            <div className="msg-enter">
+              <WelcomeScreen onExample={fillComposer} />
+            </div>
+          )}
 
-          {timelineRows.map((row, rowIdx) => {
+          {visibleTimelineStart > 0 && (
+            <button
+              type="button"
+              onClick={handleLoadEarlier}
+              className="mx-auto block rounded-full border border-border/60 bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              {t("agent.loadEarlier" as never)}
+            </button>
+          )}
+
+          {visibleTimelineRows.map((row, visibleRowIdx) => {
+            const rowIdx = visibleTimelineStart + visibleRowIdx;
+            const shouldAnimate = (
+              mountRowCountRef.current !== null &&
+              rowIdx >= mountRowCountRef.current
+            );
             if (row.render === "live") {
               if (row.item.kind === "proposal") {
                 return (
-                  <MandateProposalCard
-                    key={row.key}
-                    proposal={row.item.proposal}
-                    committed={committedMandates[row.item.proposal.proposal_id] ?? null}
-                    onAdjust={runPrompt}
-                  />
+                  <div key={row.key} className={shouldAnimate ? "msg-enter" : undefined}>
+                    <MandateProposalCard
+                      proposal={row.item.proposal}
+                      committed={committedMandates[row.item.proposal.proposal_id] ?? null}
+                      onAdjust={runPrompt}
+                    />
+                  </div>
                 );
               }
-              return <LiveActionChip key={row.key} action={row.item.action} />;
+              return (
+                <div key={row.key} className={shouldAnimate ? "msg-enter" : undefined}>
+                  <LiveActionChip action={row.item.action} />
+                </div>
+              );
             }
             const g = row.group;
             if (g.kind === "timeline") {
               const isLastRow = rowIdx === timelineRows.length - 1;
               return (
-                <ThinkingTimeline
+                <div
                   key={row.key}
-                  messages={g.msgs}
-                  isLatest={isLastRow && status === "streaming"}
-                />
+                  data-msg-idx={g.msgIdx}
+                  className={shouldAnimate ? "msg-enter" : undefined}
+                >
+                  <ThinkingTimeline
+                    messages={g.msgs}
+                    isLatest={isLastRow && status === "streaming"}
+                  />
+                </div>
               );
             }
-            const msgIdx = messages.indexOf(g.msg);
-            if (g.msg.type === "swarm_status" && g.msg.swarmStatus) {
+            const swarmStatus = g.msg.swarmRunId
+              ? swarmRuns[g.msg.swarmRunId] ?? g.msg.swarmStatus
+              : g.msg.swarmStatus;
+            if (g.msg.type === "swarm_status" && swarmStatus) {
               return (
-                <div key={row.key} data-msg-idx={msgIdx}>
-                  <SwarmStatusCard status={g.msg.swarmStatus} />
+                <div
+                  key={row.key}
+                  data-msg-idx={g.msgIdx}
+                  className={shouldAnimate ? "msg-enter" : undefined}
+                >
+                  <SwarmStatusCard status={swarmStatus} />
                 </div>
               );
             }
             return (
-              <div key={row.key} data-msg-idx={msgIdx}>
+              <div
+                key={row.key}
+                data-msg-idx={g.msgIdx}
+                className={shouldAnimate ? "msg-enter" : undefined}
+              >
                 <MessageBubble msg={g.msg} onRetry={g.msg.type === "error" ? handleRetry : undefined} />
               </div>
             );
@@ -1220,26 +1609,23 @@ export function Agent() {
 
           {/* Streaming area - single stable wrapper to prevent insertBefore DOM race */}
           {status === "streaming" && (
-            <div className="flex gap-3">
+            <div className="flex gap-3 msg-enter" aria-live="polite">
               <AgentAvatar />
               <div className="flex-1 min-w-0 space-y-1.5">
-                {!reasoningActive && !streamingText && toolCalls.length === 0 && !messages.some((m) => m.type === "swarm_status" && m.swarmStatus?.status === "running") && (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1">
+                {!reasoningActive && !streamingText && toolCalls.length === 0 && !Object.values(swarmRuns).some((run) => run.status === "running") && (
+                  <div role="status" className="flex items-center gap-2 text-xs text-muted-foreground pt-1">
                     <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />
                     <span>{t('agent.agentWorking')}</span>
                   </div>
                 )}
                 {reasoningActive && !streamingText && (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <div role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />
                     <span>{t('agent.reasoning')}</span>
                   </div>
                 )}
                 {streamingText && (
-                  <div className="prose prose-sm dark:prose-invert max-w-none leading-relaxed">
-                    {streamingText}
-                    <span className="inline-block w-0.5 h-4 bg-primary ml-0.5 animate-pulse align-middle" />
-                  </div>
+                  <MarkdownContent content={streamingText} streaming showCursor />
                 )}
                 {toolCalls.length > 0 && (
                   <ToolProgressIndicator toolCalls={toolCalls} />
@@ -1263,7 +1649,7 @@ export function Agent() {
         {/* Scroll to bottom button */}
         {showScrollBtn && (
           <button
-            onClick={forceScrollToBottom}
+            onClick={() => forceScrollToBottom(true)}
             className="sticky bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 px-3 py-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium shadow-lg hover:opacity-90 transition-opacity z-10"
           >
             <ArrowDown className="h-3 w-3" /> {t('agent.newMessages')}
@@ -1272,12 +1658,16 @@ export function Agent() {
         <ConversationTimeline messages={messages} containerRef={listRef} />
       </div>
 
-      <form onSubmit={handleSubmit} className="border-t p-4 bg-background/80 backdrop-blur-sm">
+      <form
+        data-agent-composer
+        onSubmit={handleSubmit}
+        className="border-t p-4 bg-background/80 backdrop-blur-sm"
+      >
         <div className="max-w-3xl mx-auto space-y-2">
           {/* Swarm preset badge */}
           {swarmPreset && (
             <div className="flex items-center gap-1">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400 text-xs font-medium">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/10 text-primary text-xs font-medium">
                 <Users className="h-3 w-3" />
                 {swarmPreset.title}
                 <button type="button" onClick={() => setSwarmPreset(null)} className="hover:text-destructive transition-colors">
@@ -1514,14 +1904,14 @@ export function Agent() {
               )}
             </div>
           )}
-          <div className="flex gap-2 items-end">
+          <div className="flex items-end gap-2 rounded-2xl border border-border/60 bg-background p-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.03),0_8px_24px_-12px_rgba(0,0,0,0.12)] transition-shadow focus-within:ring-2 focus-within:ring-primary/25 dark:bg-card">
             {/* "+" menu: PDF upload + Swarm presets */}
             <div className="relative" ref={uploadMenuRef}>
               <button
                 type="button"
                 onClick={() => setShowUploadMenu(prev => !prev)}
                 disabled={status === "streaming" || uploading}
-                className="w-9 h-9 rounded-full border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40 shrink-0"
+                className="w-10 h-10 rounded-full border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40 shrink-0"
                 title={t("agent.moreOptions")}
               >
                 <Plus className="h-4 w-4" />
@@ -1629,19 +2019,26 @@ export function Agent() {
                 }
               }}
               placeholder={
-                goalComposerActive
+                status === "streaming"
+                  ? t("agent.agentWorking")
+                  : goalComposerActive
                   ? t("agent.describeGoal")
                   : t("agent.placeholder")
               }
               aria-label={t("agent.messageInputLabel")}
-              className="flex-1 px-4 py-2.5 rounded-xl border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow resize-none max-h-32 overflow-y-auto"
-              disabled={status === "streaming"}
+              aria-readonly={status === "streaming"}
+              className={[
+                "min-h-[52px] flex-1 resize-none overflow-y-auto bg-transparent px-3 py-3 text-sm outline-none max-h-32",
+                status === "streaming" ? "cursor-not-allowed text-muted-foreground/70" : "",
+              ].join(" ")}
+              readOnly={status === "streaming"}
             />
-            {messages.length > 0 && (
+            {sessionId && (
               <button
                 type="button"
                 onClick={handleExport}
-                className="px-3 py-2.5 rounded-xl border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                disabled={messages.length === 0}
+                className="h-10 px-3 rounded-xl border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-30 disabled:pointer-events-none"
                 title={t('agent.exportChat')}
               >
                 <Download className="h-4 w-4" />
@@ -1651,7 +2048,7 @@ export function Agent() {
               <button
                 type="button"
                 onClick={handleCancel}
-                className="px-4 py-2.5 rounded-xl bg-destructive text-destructive-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+                className="h-10 px-4 rounded-xl bg-destructive text-destructive-foreground text-sm font-medium hover:opacity-90 transition-opacity"
                 title={t('agent.stopGeneration')}
               >
                 <Square className="h-4 w-4" />
@@ -1660,7 +2057,7 @@ export function Agent() {
               <button
                 type="submit"
                 disabled={goalComposerActive ? !input.trim() : (!input.trim() && !attachment)}
-                className="px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
+                className="h-10 px-4 rounded-xl bg-primary text-primary-foreground text-sm font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
                 title={t("agent.send")}
                 aria-label={t("agent.send")}
               >

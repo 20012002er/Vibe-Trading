@@ -21,7 +21,11 @@
     "dark": "داكن",
     "language": "اللغة",
     "collapse": "طي",
-    "expand": "توسيع"
+    "expand": "توسيع",
+    "skipToMain": "تخطَّ إلى المحتوى الرئيسي",
+    "sidebar": "الشريط الجانبي لـ Vibe-Trading",
+    "mainNavigation": "التنقل الرئيسي",
+    "about": "حول"
   },
   "runtime": {
     "monitorBadge": "مراقب وقت التشغيل",
@@ -142,17 +146,14 @@
     "return": "العائد",
     "sharpe": "Sharpe",
     "fullReport": "التقرير الكامل",
-    "compare": "مقارنة"
+    "compare": "مقارنة",
+    "unknown": "غير معروف"
   },
   "connection": {
-    "reconnecting": "فُقد الاتصال، تتم إعادة الاتصال (المحاولة {{attempt}})…",
+    "reconnecting": "جارٍ إعادة الاتصال…",
     "disconnected": "فُقد الاتصال"
   },
   "welcome": {
-    "title": "Vibe-Trading",
-    "subtitle": "تداول بالذكاء مع فريقك من الوكلاء الماليين المحترفين",
-    "describePrompt": "صف استراتيجية تداول لتبدأ.",
-    "tryExample": "جرّب مثالًا:",
     "categories": {
       "multiMarketBacktest": "اختبار عكسي لأسواق متعددة",
       "researchAnalysis": "البحث والتحليل",
@@ -164,7 +165,7 @@
       "valueInvesting": "استثمار القيمة"
     },
     "examples": {
-      "crossMarketPortfolio": "تحسين محفظة أسهم A",
+      "crossMarketPortfolio": "موازنة محفظة من ثلاثة أسهم",
       "crossMarketPortfolioDesc": "تحسين محفظة أسهم A بمُحسّن تكافؤ المخاطر",
       "btcMacd": "استراتيجية MACD لأسهم A",
       "btcMacdDesc": "اختبار عكسي لاستراتيجية MACD لأسهم A على مستوى الدقيقة",
@@ -172,7 +173,7 @@
       "usTechMaxDivDesc": "محفظة أقصى تنويع للأسهم الزرقاء",
       "multiFactorAlpha": "نموذج ألفا متعدد العوامل",
       "multiFactorAlphaDesc": "تركيب عوامل مرجّحة بـ IC عبر 300 سهم",
-      "optionsGreeks": "تحليل Greeks للخيارات",
+      "optionsGreeks": "فحص مخاطر الخيارات (Greeks)",
       "optionsGreeksDesc": "تسعير Black-Scholes مع تحليل Delta/Gamma/Theta/Vega",
       "valueCommittee": "لجنة استثمار القيمة",
       "valueCommitteeDesc": "نقاش أربعة أساتذة حول سهم واحد: Buffett / Munger / Duan Yongping / Li Lu",
@@ -183,10 +184,10 @@
       "thesisTracker": "متتبع أطروحة الاستثمار",
       "thesisTrackerDesc": "اكتب أطروحة من 5 جمل + خطوط حمراء + مراسي تقييم لحيازة",
       "thesisTrackerPrompt": "استخدم مهارة thesis-tracker لبناء أطروحة استثمارية لـ Kweichow Moutai (600519.SH): أطروحة أساسية من 5 جمل، افتراضات قابلة للدحض، خطوط حمراء، ومراسي تقييم، مع التحقق عبر financial_rigor",
-      "valuationCheck": "فحص تقييم دقيق",
+      "valuationCheck": "هل السهم مُقيَّم بأكثر من قيمته؟",
       "valuationCheckDesc": "تحقق من PE / PB / ROE / القيمة السوقية بحساب عشري دقيق دون انجراف عائم",
       "valuationCheckPrompt": "استخدم أداة financial_rigor للتحقق من تقييم Kweichow Moutai: السعر 1500، EPS 68.6، القيمة الدفترية للسهم 180 — احسب PE وPB وROE بدقة، ثم تقييمًا بثلاثة سيناريوهات (نمو 12%/8%/0%، PE 22/18/14، 3 سنوات)",
-      "investmentCommittee": "مراجعة لجنة الاستثمار",
+      "investmentCommittee": "شراء أم بيع؟ دع اللجنة تتناقش",
       "investmentCommitteeDesc": "نقاش متعدد الوكلاء: شراء مقابل بيع، مراجعة المخاطر، قرار مدير المحفظة",
       "quantStrategyDesk": "مكتب استراتيجية الكمّ",
       "quantStrategyDeskDesc": "خط أنابيب: فرز → بحث عوامل → اختبار عكسي → تدقيق المخاطر",
@@ -228,22 +229,22 @@
       "shadowDeltaPrompt": "شغّل اختبارًا عكسيًا ظليًا لآخر 90 يومًا وحلّل أين انحرفت أرباحي عن الظلّ (انتهاكات القواعد، الخروج المبكر، إشارات مفقودة)",
       "shadowReportPrompt": "اعرض تقرير الظلّ وأعطِني الرابط — ابدأ بفرق أرباحك مقابل الظلّ"
     },
-    "capabilities": {
-      "financeSkills": "مكتبة المهارات المالية",
-      "swarmTeams": "فرق وكلاء السرب",
-      "autoTools": "أدوات مكتشفة تلقائيًا",
-      "markets": "أسهم A · متعدد العوامل · كمّي",
-      "connectors": "ملفات تعريف موصلات التداول",
-      "timeframes": "أطر زمنية من الدقيقة إلى اليومي",
-      "optimizers": "4 محسّنات للمحفظة",
-      "riskMetrics": "أكثر من 15 مقياس مخاطر",
-      "options": "الخيارات والمشتقات",
-      "pdfWeb": "بحث PDF والويب",
-      "factorML": "تحليل العوامل وتعلّم الآلة",
-      "journalAnalyzer": "محلّل يومية التداول",
-      "shadowBacktest": "اختبار عكسي للحساب الظلّي",
-      "memory": "ذاكرة دائمة",
-      "sessionSearch": "بحث الجلسات"
+    "taskSubtitle": "اسأل عن سهم أو استراتيجية أو محفظتك — سأجلب البيانات وأجري الحسابات وأعرض كل خطوة.",
+    "quickActions": "إجراءات سريعة",
+    "browseAllExamples": "تصفح جميع الأمثلة",
+    "greetings": {
+      "morning1": "صباح الخير.",
+      "morning2": "صباح الخير — جاهزون متى شئت.",
+      "morning3": "صباح الخير. لنبدأ.",
+      "afternoon1": "نهارك سعيد.",
+      "afternoon2": "هل أنت مستعد للسؤال التالي؟",
+      "afternoon3": "ماذا نستكشف بعد الظهر؟",
+      "evening1": "مساء الخير.",
+      "evening2": "لنفهم السوق معًا.",
+      "evening3": "هل نبدأ بحثًا مركزًا؟",
+      "night1": "ما زلت تفكر؟",
+      "night2": "لنرتب الأفكار معًا.",
+      "night3": "فكرة أخيرة قبل أن تختم يومك؟"
     }
   },
   "settings": {
@@ -354,7 +355,12 @@
     "shellTools": "أدوات Shell",
     "scheduler": "المُجدوِل",
     "sessionRuntime": "وقت تشغيل الجلسة",
-    "flagsReadFrom": "تُقرأ الأعلام من {{env1}} و{{env2}} و{{env3}} في {{env_path}}."
+    "flagsReadFrom": "تُقرأ الأعلام من {{env1}} و{{env2}} و{{env3}} في {{env_path}}.",
+    "unknownError": "خطأ غير معروف",
+    "providerChangeHint": "يؤدي تغيير المزوّد إلى تحديث النموذج ونقطة النهاية الموصى بهما.",
+    "oauth": "OAuth",
+    "apiKey": "مفتاح API",
+    "tushareTokenDesc": "يُستخدم لبيانات الأسهم الصينية (فئة A) والعقود الآجلة والصناديق والاقتصاد الكلي. إذا لم يُضبط، يتراجع المشروع إلى AKShare حيثما توفر."
   },
   "qveris": {
     "title": "سوق أدوات QVeris",
@@ -437,7 +443,12 @@
     "moreOptions": "خيارات إضافية",
     "uploadPdf": "رفع مستند PDF",
     "researchGoal": "هدف البحث",
-    "agentSwarm": "سرب الوكلاء"
+    "agentSwarm": "سرب الوكلاء",
+    "attachmentChip": "مرفق",
+    "swarmModeChip": "وضع السرب",
+    "goalModeChip": "هدف البحث",
+    "continueGoalMessage": "متابعة هدف البحث: {{goal}}",
+    "loadEarlier": "تحميل الرسائل الأقدم"
   },
   "runDetail": {
     "title": "تفاصيل التشغيل",
@@ -515,7 +526,9 @@
     "trades": "عدد التداولات",
     "maxConsecLosses": "أقصى خسائر متتالية",
     "exposureTime": "وقت التعرّض",
-    "avgHoldingPeriod": "متوسط فترة الاحتفاظ"
+    "avgHoldingPeriod": "متوسط فترة الاحتفاظ",
+    "better": "أفضل",
+    "worse": "أسوأ"
   },
   "correlation": {
     "title": "مصفوفة الارتباط",
@@ -742,7 +755,9 @@
     "time": "الوقت",
     "iters": "التكرارات",
     "output": "المخرجات",
-    "waitingForEvents": "بانتظار أحداث الوكيل..."
+    "waitingForEvents": "بانتظار أحداث الوكيل...",
+    "teamStarting": "الفريق قيد التشغيل — أولى التحديثات خلال ثوانٍ…",
+    "detailsUnavailable": "التفاصيل غير متاحة"
   },
   "mandate": {
     "runtimeMandate": "تفويض وقت تشغيل الموصل",
@@ -819,5 +834,43 @@
     "noPriceData": "لا توجد بيانات أسعار",
     "noCorrelationData": "لا توجد بيانات ارتباط",
     "noEquityData": "لا توجد بيانات أصول"
+  },
+  "toolProgress": {
+    "step": "الخطوة {{step}} · {{tool}}",
+    "toolsRunning": "الأدوات قيد التشغيل: {{count}}",
+    "toolsCompleted": "الأدوات المكتملة: {{count}}",
+    "more": "… و{{count}} أخرى",
+    "etaSeconds": "متبقٍ نحو {{seconds}} ثانية",
+    "earlier": "+{{count}} سابقة"
+  },
+  "swarm": {
+    "assemblingTeam": "جارٍ تشكيل الفريق…",
+    "preparingLayers": "جارٍ تجهيز الطبقات…",
+    "agentProgress": "تقدم وكلاء السرب",
+    "status": {
+      "waiting": "في الانتظار",
+      "running": "قيد التشغيل",
+      "done": "منجز",
+      "failed": "فشل",
+      "blocked": "محجوب",
+      "retry": "إعادة المحاولة",
+      "cancelled": "أُلغي",
+      "pending": "بانتظار البدء",
+      "completed": "مكتمل",
+      "unknown": "غير معروف"
+    },
+    "elapsed": {
+      "seconds": "{{value}} ث",
+      "minutesSeconds": "{{minutes}} د {{seconds}} ث"
+    },
+    "presets": {
+      "investment_committee": "مراجعة لجنة الاستثمار",
+      "quant_strategy_desk": "مكتب الاستراتيجيات الكمية",
+      "value_investing_committee": "لجنة الاستثمار القيمي"
+    }
+  },
+  "metrics": {
+    "good": "جيد",
+    "poor": "ضعيف"
   }
 }

@@ -18,10 +18,10 @@ function makeMsg(overrides: Partial<AgentMessage> = {}): AgentMessage {
 describe("ThinkingTimeline", () => {
   it("shows summary text when done", () => {
     const msgs: AgentMessage[] = [
-      makeMsg({ type: "tool_call", tool: "run_backtest", status: "ok" }),
+      makeMsg({ type: "tool_call", tool: "backtest", status: "ok" }),
       makeMsg({
         type: "tool_result",
-        tool: "run_backtest",
+        tool: "backtest",
         status: "ok",
         elapsed_ms: 3200,
         content: "done",
@@ -35,7 +35,7 @@ describe("ThinkingTimeline", () => {
 
   it("shows running state with spinner", () => {
     const msgs: AgentMessage[] = [
-      makeMsg({ type: "tool_call", tool: "run_backtest", status: "running" }),
+      makeMsg({ type: "tool_call", tool: "backtest", status: "running" }),
     ];
 
     render(<ThinkingTimeline messages={msgs} isLatest />);
@@ -58,7 +58,7 @@ describe("ThinkingTimeline", () => {
     await user.click(screen.getByRole("button"));
 
     // Now expanded — should show step labels
-    expect(screen.getByText("Run command")).toBeInTheDocument();
+    expect(screen.getByText("Run command")).toBeVisible();
   });
 
   it("shows error icon when a step failed", () => {
@@ -102,8 +102,8 @@ describe("ThinkingTimeline", () => {
       makeMsg({ type: "tool_result", tool: "bash", status: "ok", elapsed_ms: 500, content: "ok" }),
       makeMsg({ type: "tool_call", tool: "write_file", status: "ok" }),
       makeMsg({ type: "tool_result", tool: "write_file", status: "ok", elapsed_ms: 200, content: "ok" }),
-      makeMsg({ type: "tool_call", tool: "run_backtest", status: "ok" }),
-      makeMsg({ type: "tool_result", tool: "run_backtest", status: "ok", elapsed_ms: 5000, content: "ok" }),
+      makeMsg({ type: "tool_call", tool: "backtest", status: "ok" }),
+      makeMsg({ type: "tool_result", tool: "backtest", status: "ok", elapsed_ms: 5000, content: "ok" }),
     ];
 
     render(<ThinkingTimeline messages={msgs} />);
@@ -114,5 +114,37 @@ describe("ThinkingTimeline", () => {
     expect(screen.getByText("Run command")).toBeInTheDocument();
     expect(screen.getByText("Generate code")).toBeInTheDocument();
     expect(screen.getByText("Run backtest")).toBeInTheDocument();
+  });
+
+  it("exposes disclosure semantics and preserves an explicit user expansion", async () => {
+    const user = userEvent.setup();
+    const msgs: AgentMessage[] = [
+      makeMsg({ type: "tool_call", tool: "bash", status: "ok" }),
+      makeMsg({ type: "tool_result", tool: "bash", status: "ok", content: "ok" }),
+    ];
+    const { rerender } = render(<ThinkingTimeline messages={msgs} />);
+
+    const button = screen.getByRole("button");
+    const detailsId = button.getAttribute("aria-controls");
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    expect(detailsId).toBeTruthy();
+    expect(document.getElementById(detailsId!)).not.toBeVisible();
+
+    await user.click(button);
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    expect(document.getElementById(detailsId!)).toBeVisible();
+
+    rerender(<ThinkingTimeline messages={msgs} isLatest />);
+    rerender(<ThinkingTimeline messages={msgs} isLatest={false} />);
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    expect(document.getElementById(detailsId!)).toBeVisible();
+  });
+
+  it("truncates long summary text within the disclosure row", () => {
+    render(<ThinkingTimeline messages={[
+      makeMsg({ type: "tool_call", tool: "unusually_long_tool_name", status: "running" }),
+    ]} />);
+
+    expect(screen.getByText(/Running unusually_long_tool_name/)).toHaveClass("truncate");
   });
 });

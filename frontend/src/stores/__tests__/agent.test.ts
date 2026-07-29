@@ -1,5 +1,6 @@
 import { useAgentStore } from "../agent";
 import { makeMessage, makeToolCall, resetFactories } from "@/tests/helpers/factories";
+import type { SwarmRunStatus } from "@/types/agent";
 
 beforeEach(() => {
   useAgentStore.getState().reset();
@@ -15,6 +16,7 @@ describe("agent store — initial state", () => {
     expect(s.streamingText).toBe("");
     expect(s.streamingSessionId).toBeNull();
     expect(s.toolCalls).toEqual([]);
+    expect(s.swarmRuns).toEqual({});
     expect(s.sseStatus).toBe("disconnected");
     expect(s.sseRetryAttempt).toBe(0);
     expect(s.sessionLoading).toBe(false);
@@ -81,6 +83,18 @@ describe("setStatus", () => {
     useAgentStore.getState().setStatus("streaming");
     expect(useAgentStore.getState().streamingSessionId).toBeNull();
   });
+
+  it("clears only the matching replay session spinner", () => {
+    const store = useAgentStore.getState();
+    store.setSessionId("sess-1");
+    store.setStatus("streaming");
+    store.switchSession("sess-2");
+
+    store.clearStreamingSession("sess-2");
+    expect(useAgentStore.getState().streamingSessionId).toBe("sess-1");
+    store.clearStreamingSession("sess-1");
+    expect(useAgentStore.getState().streamingSessionId).toBeNull();
+  });
 });
 
 describe("setSessionId / loadHistory", () => {
@@ -120,6 +134,60 @@ describe("tool calls", () => {
     useAgentStore.getState().updateToolCall("nonexistent", { status: "error" });
     expect(useAgentStore.getState().toolCalls[0].status).toBe("running");
   });
+
+  it("updates repeated running tool calls in FIFO order", () => {
+    const store = useAgentStore.getState();
+    store.addToolCall(makeToolCall({ id: "search#1", tool: "search" }));
+    store.addToolCall(makeToolCall({ id: "search#2", tool: "search" }));
+
+    store.updateOldestRunningToolCall("search", { status: "ok" });
+    expect(useAgentStore.getState().toolCalls.map((tc) => tc.status)).toEqual([
+      "ok",
+      "running",
+    ]);
+
+    store.updateOldestRunningToolCall("search", { status: "error" });
+    expect(useAgentStore.getState().toolCalls.map((tc) => tc.status)).toEqual([
+      "ok",
+      "error",
+    ]);
+  });
+});
+
+describe("swarm status ordering", () => {
+  it("keeps a stable placeholder message while status updates in its own slice", () => {
+    const now = vi.spyOn(Date, "now");
+    now.mockReturnValue(100);
+    const status: SwarmRunStatus = {
+      runId: "swarm-1",
+      preset: "research",
+      status: "running",
+      currentLayer: 0,
+      totalLayers: 2,
+      startedAt: 100,
+      agents: [],
+    };
+
+    const store = useAgentStore.getState();
+    store.upsertSwarmStatus(status);
+    const placeholderMessages = useAgentStore.getState().messages;
+    now.mockReturnValue(200);
+    store.upsertSwarmStatus({ ...status, currentLayer: 1 });
+    store.updateSwarmStatus("swarm-1", (current) => ({
+      ...current,
+      status: "completed",
+    }));
+
+    expect(useAgentStore.getState().messages).toHaveLength(1);
+    expect(useAgentStore.getState().messages).toBe(placeholderMessages);
+    expect(useAgentStore.getState().messages[0].timestamp).toBe(100);
+    expect(useAgentStore.getState().messages[0].swarmStatus).toBeUndefined();
+    expect(useAgentStore.getState().swarmRuns["swarm-1"]).toMatchObject({
+      currentLayer: 1,
+      status: "completed",
+    });
+    now.mockRestore();
+  });
 });
 
 describe("session cache", () => {
@@ -154,6 +222,30 @@ describe("session cache", () => {
     expect(useAgentStore.getState().getCachedSession("sess-2")).toBeUndefined();
     expect(useAgentStore.getState().getCachedSession("sess-1")).toBeDefined();
   });
+
+  it("restores cached swarm state without mutating placeholder messages", () => {
+    const status: SwarmRunStatus = {
+      runId: "swarm-cache",
+      preset: "research",
+      status: "running",
+      currentLayer: 1,
+      totalLayers: 2,
+      startedAt: 100,
+      agents: [],
+    };
+    const store = useAgentStore.getState();
+    store.upsertSwarmStatus(status);
+    store.cacheSession("swarm-session", useAgentStore.getState().messages);
+
+    store.switchSession("other-session");
+    store.switchSession(
+      "swarm-session",
+      useAgentStore.getState().getCachedSession("swarm-session"),
+    );
+
+    expect(useAgentStore.getState().swarmRuns["swarm-cache"]).toEqual(status);
+    expect(useAgentStore.getState().messages[0].swarmStatus).toBeUndefined();
+  });
 });
 
 describe("setSseStatus", () => {
@@ -183,6 +275,7 @@ describe("switchSession", () => {
     expect(s.sessionId).toBe("new-sess");
     expect(s.messages).toEqual([]);
     expect(s.toolCalls).toEqual([]);
+    expect(s.swarmRuns).toEqual({});
     expect(s.streamingText).toBe("");
     expect(s.status).toBe("idle");
     expect(s.sessionLoading).toBe(true);
@@ -229,6 +322,7 @@ describe("reset", () => {
     expect(s.sessionId).toBeNull();
     expect(s.streamingText).toBe("");
     expect(s.toolCalls).toEqual([]);
+    expect(s.swarmRuns).toEqual({});
     expect(s.status).toBe("idle");
     expect(s.streamingSessionId).toBeNull();
     expect(s.sessionLoading).toBe(false);

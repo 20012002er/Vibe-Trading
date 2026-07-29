@@ -1,4 +1,5 @@
-import { useRef, type JSX } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { useTranslation } from "react-i18next";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ProgressBar } from "@/components/chat/ProgressBar";
@@ -10,6 +11,29 @@ interface EtaSample {
   stage: string;
   current: number;
   suppressed: boolean;
+}
+
+function calculateEta(tc: ToolCallEntry, previous?: EtaSample): number | null {
+  const progress = tc.progress;
+  if (
+    !progress
+    || typeof progress.current !== "number"
+    || typeof progress.total !== "number"
+    || progress.total <= 0
+  ) {
+    return null;
+  }
+
+  const stage = progress.stage || "";
+  if (previous && progress.current < previous.current) return null;
+  if (previous?.suppressed && previous.stage === stage) return null;
+  if (!previous || previous.stage !== stage) return null;
+  if (progress.current < 3 || progress.current < progress.total * 0.1) return null;
+  if (tc.elapsed_s == null || tc.elapsed_s <= 0) return null;
+
+  const eta = (tc.elapsed_s / progress.current) * (progress.total - progress.current);
+  if (!isFinite(eta) || eta < 0) return null;
+  return Math.round(eta);
 }
 
 /* ---------- Determinate progress ring ---------- */
@@ -58,13 +82,12 @@ function ProgressRing({ current, total }: RingProps): JSX.Element {
 interface RowProps {
   entry: ToolCallEntry;
   stepIndex: number;
-  totalSteps: number;
-  isHeader?: boolean;
   connector?: "branch" | "end" | "none";
   eta: number | null;
 }
 
-function ToolRow({ entry, stepIndex, totalSteps, isHeader, connector = "none", eta }: RowProps): JSX.Element {
+function ToolRow({ entry, stepIndex, connector = "none", eta }: RowProps): JSX.Element {
+  const { t } = useTranslation();
   const progress = entry.progress;
   const hasDeterminate = !!(progress && typeof progress.current === "number" && typeof progress.total === "number" && progress.total > 0);
   const stage = progress?.stage || "";
@@ -79,14 +102,12 @@ function ToolRow({ entry, stepIndex, totalSteps, isHeader, connector = "none", e
         : <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />;
 
   const localized = localizeToolName(entry.tool);
-  const stepLabel = isHeader
-    ? `${totalSteps} tools running`
-    : `Step ${stepIndex} · ${localized}`;
+  const stepLabel = t("toolProgress.step" as never, { step: stepIndex, tool: localized });
 
   return (
     <div className="flex flex-col sm:flex-row sm:items-center gap-x-2 gap-y-0.5 text-xs min-w-0">
       {/* Primary row */}
-      <div className="flex items-center gap-2 min-w-0 sm:flex-none">
+      <div className="flex items-center gap-2 min-w-0">
         {connector !== "none" && (
           <span className="text-border/60 shrink-0 w-3 text-center" aria-hidden="true">
             {connector === "branch" ? "├" : "└"}
@@ -95,7 +116,10 @@ function ToolRow({ entry, stepIndex, totalSteps, isHeader, connector = "none", e
         {icon}
         <span className="text-foreground truncate">{stepLabel}</span>
         {entry.elapsed_s != null && (
-          <span className="ml-auto sm:ml-0 tabular-nums text-[10px] text-muted-foreground/70 shrink-0">
+          <span
+            aria-hidden="true"
+            className="ml-auto sm:ml-0 tabular-nums text-[10px] text-muted-foreground/70 shrink-0"
+          >
             {entry.elapsed_s.toFixed(0)}s
           </span>
         )}
@@ -117,8 +141,11 @@ function ToolRow({ entry, stepIndex, totalSteps, isHeader, connector = "none", e
             />
           )}
           {eta != null && (
-            <span className="text-[10px] text-muted-foreground/70 tabular-nums shrink-0">
-              ~{eta}s left
+            <span
+              aria-hidden="true"
+              className="text-[10px] text-muted-foreground/70 tabular-nums shrink-0"
+            >
+              {t("toolProgress.etaSeconds" as never, { seconds: eta })}
             </span>
           )}
         </div>
@@ -135,121 +162,157 @@ function ToolRow({ entry, stepIndex, totalSteps, isHeader, connector = "none", e
 
 /* ---------- Public component ---------- */
 interface Props {
-  /** Full toolCalls slice from the store. The component filters running ones internally. */
+  /** Full toolCalls slice from the store for the current attempt. */
   toolCalls: ToolCallEntry[];
 }
 
 const MAX_VISIBLE = 3;
+const COLLAPSED_ROW_COUNT = MAX_VISIBLE - 1;
 
-export function ToolProgressIndicator({ toolCalls }: Props): JSX.Element | null {
-  // Per-tool ETA samples (mutable across renders, not state to avoid re-renders).
+interface IndexedToolCall {
+  entry: ToolCallEntry;
+  index: number;
+}
+
+export const ToolProgressIndicator = memo(function ToolProgressIndicator({
+  toolCalls,
+}: Props): JSX.Element | null {
+  const { t } = useTranslation();
+  const [showEarlier, setShowEarlier] = useState(false);
   const etaSamplesRef = useRef<Map<string, EtaSample>>(new Map());
 
-  const running = toolCalls.filter((tc) => tc.status === "running");
-  if (running.length === 0) return null;
+  const { indexedRows, running, anyError, collapsedRows } = useMemo(() => {
+    const indexedRows: IndexedToolCall[] = [];
+    const runningRows: IndexedToolCall[] = [];
+    const terminalRows: IndexedToolCall[] = [];
+    const running: ToolCallEntry[] = [];
+    let anyError = false;
+
+    toolCalls.forEach((entry, index) => {
+      const indexed = { entry, index };
+      indexedRows.push(indexed);
+      if (entry.status === "running") {
+        running.push(entry);
+        runningRows.push(indexed);
+      } else {
+        terminalRows.push(indexed);
+      }
+      if (entry.status === "error") anyError = true;
+    });
+
+    const collapsedRows = toolCalls.length <= MAX_VISIBLE
+      ? indexedRows
+      : [
+          ...runningRows.slice(-COLLAPSED_ROW_COUNT),
+          ...terminalRows.reverse(),
+        ].slice(0, COLLAPSED_ROW_COUNT);
+
+    return { indexedRows, running, anyError, collapsedRows };
+  }, [toolCalls]);
+
+  const etaById = useMemo(() => {
+    const eta = new Map<string, number | null>();
+    for (const entry of running) {
+      eta.set(entry.id, calculateEta(entry, etaSamplesRef.current.get(entry.id)));
+    }
+    return eta;
+  }, [running]);
+
+  useEffect(() => {
+    const previousSamples = etaSamplesRef.current;
+    const nextSamples = new Map<string, EtaSample>();
+
+    for (const entry of running) {
+      const progress = entry.progress;
+      if (!progress || typeof progress.current !== "number") continue;
+
+      const stage = progress.stage || "";
+      const previous = previousSamples.get(entry.id);
+      const sameStage = previous?.stage === stage;
+      nextSamples.set(entry.id, {
+        stage,
+        current: progress.current,
+        suppressed: Boolean(
+          sameStage
+          && (previous?.suppressed || progress.current < previous.current),
+        ),
+      });
+    }
+
+    etaSamplesRef.current = nextSamples;
+  }, [running]);
+
+  if (toolCalls.length === 0) return null;
 
   const totalSoFar = toolCalls.length;
-
-  /* ---------- compute ETA for each running tool ---------- */
-  const computeEta = (tc: ToolCallEntry): number | null => {
-    const p = tc.progress;
-    if (!p || typeof p.current !== "number" || typeof p.total !== "number") return null;
-    if (p.total <= 0) return null;
-    const stage = p.stage || "";
-    const samples = etaSamplesRef.current;
-    const prev = samples.get(tc.tool);
-
-    // Out-of-order: current decreased → suppress for the rest of the run.
-    if (prev && p.current < prev.current) {
-      samples.set(tc.tool, { stage, current: p.current, suppressed: true });
-      return null;
-    }
-    if (prev?.suppressed && prev.stage === stage) {
-      // Update tracking but keep suppressed.
-      samples.set(tc.tool, { stage, current: p.current, suppressed: true });
-      return null;
-    }
-    samples.set(tc.tool, { stage, current: p.current, suppressed: false });
-
-    // Need a stable stage and enough samples to extrapolate.
-    if (!prev || prev.stage !== stage) return null;
-    if (p.current < 3) return null;
-    if (p.current < p.total * 0.1) return null;
-    if (tc.elapsed_s == null || tc.elapsed_s <= 0) return null;
-
-    const eta = (tc.elapsed_s / p.current) * (p.total - p.current);
-    if (!isFinite(eta) || eta < 0) return null;
-    return Math.round(eta);
-  };
+  const rows = showEarlier ? indexedRows : collapsedRows;
+  const overflow = showEarlier ? 0 : toolCalls.length - rows.length;
+  const coarseStatus = running.length > 0
+    ? t("toolProgress.toolsRunning" as never, { count: running.length })
+    : t("toolProgress.toolsCompleted" as never, { count: toolCalls.length });
 
   /* ---------- aggregate icon state for the header row ---------- */
-  // (Used when 2+ tools are running — header shows multi-tool aggregate.)
-  // Note: filtered list is `running` so all are still running by construction.
-  // We still inspect entire toolCalls so an earlier error in this turn shows
-  // through the aggregate.
-  const anyError = toolCalls.some((tc) => tc.status === "error");
   const aggregateIcon = anyError
     ? <XCircle className="h-3 w-3 text-danger shrink-0" />
-    : <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />;
-
-  // Display rule: ≤3 running → show all; >3 → first 2 + "… +N more".
-  const showAll = running.length <= MAX_VISIBLE;
-  const rows = showAll ? running : running.slice(0, 2);
-  const overflow = showAll ? 0 : running.length - rows.length;
+    : running.length > 0
+      ? <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />
+      : <CheckCircle2 className="h-3 w-3 text-success shrink-0" />;
 
   /* ---------- render ---------- */
-  if (running.length === 1) {
-    const only = running[0];
-    const eta = computeEta(only);
+  if (toolCalls.length === 1) {
+    const only = toolCalls[0];
     return (
-      <div
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-        className="min-w-0"
-      >
+      <div className="min-w-0">
+        <span className="sr-only" role="status" aria-live="polite">
+          {coarseStatus}
+        </span>
         <ToolRow
           entry={only}
           stepIndex={totalSoFar}
-          totalSteps={running.length}
-          eta={eta}
+          eta={etaById.get(only.id) ?? null}
         />
       </div>
     );
   }
 
-  // 2+ running — header + indented rows.
+  // 2+ calls — header + indented rows.
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      aria-atomic="true"
-      className={cn("min-w-0 space-y-1")}
-    >
+    <div className={cn("min-w-0 space-y-1")}>
+      <span className="sr-only" role="status" aria-live="polite">
+        {coarseStatus}
+      </span>
       {/* Header row */}
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      <div
+        aria-hidden="true"
+        className="flex items-center gap-2 text-xs text-muted-foreground"
+      >
         {aggregateIcon}
-        <span className="text-foreground">{running.length} tools running</span>
+        <span className="text-foreground">{coarseStatus}</span>
       </div>
       {/* Indented rows */}
       <div className="pl-4 space-y-1">
-        {rows.map((tc, i) => (
+        {rows.map(({ entry, index }, i) => (
           <ToolRow
-            key={tc.id}
-            entry={tc}
-            stepIndex={toolCalls.indexOf(tc) + 1}
-            totalSteps={running.length}
+            key={entry.id}
+            entry={entry}
+            stepIndex={index + 1}
             connector={i === rows.length - 1 && overflow === 0 ? "end" : "branch"}
-            eta={computeEta(tc)}
+            eta={etaById.get(entry.id) ?? null}
           />
         ))}
         {overflow > 0 && (
           <div className="flex items-center gap-2 text-[10px] text-muted-foreground/60">
             <span className="text-border/60 shrink-0 w-3 text-center" aria-hidden="true">└</span>
-            <span>… +{overflow} more</span>
+            <button
+              type="button"
+              className="rounded-sm hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => setShowEarlier(true)}
+            >
+              {t("toolProgress.earlier" as never, { count: overflow })}
+            </button>
           </div>
         )}
       </div>
     </div>
   );
-}
+});

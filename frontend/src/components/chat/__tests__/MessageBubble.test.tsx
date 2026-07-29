@@ -1,7 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import i18n from "@/i18n";
 import { MessageBubble } from "../MessageBubble";
 import type { AgentMessage } from "@/types/agent";
+import type { StoredAgentMessage } from "@/stores/agent";
 
 // Mock react-markdown (heavy dependency, renders raw content in tests)
 vi.mock("react-markdown", () => ({
@@ -17,7 +19,7 @@ vi.mock("../RunCompleteCard", () => ({
   ),
 }));
 
-function makeMsg(overrides: Partial<AgentMessage> = {}): AgentMessage {
+function makeMsg(overrides: Partial<StoredAgentMessage> = {}): StoredAgentMessage {
   return {
     id: "msg-1",
     type: "answer",
@@ -29,14 +31,47 @@ function makeMsg(overrides: Partial<AgentMessage> = {}): AgentMessage {
 
 describe("MessageBubble", () => {
   describe("user messages", () => {
-    it("renders user content in a styled bubble", () => {
-      render(<MessageBubble msg={makeMsg({ type: "user", content: "Hello agent!" })} />);
-      expect(screen.getByText("Hello agent!")).toBeInTheDocument();
+    it("renders user content in the bounded neutral bubble without an avatar or timestamp", () => {
+      const { container } = render(
+        <MessageBubble msg={makeMsg({ type: "user", content: "Hello agent!" })} />,
+      );
+      const bubble = screen.getByText("Hello agent!");
+      expect(bubble).toHaveClass(
+        "max-h-[40vh]",
+        "overflow-y-auto",
+        "break-words",
+        "rounded-[18px]",
+        "bg-muted",
+        "px-4",
+        "py-3",
+        "text-[15px]",
+        "text-foreground",
+      );
+      expect(bubble).not.toHaveClass("rounded-tr-sm");
+      expect(screen.queryByText("14:30")).not.toBeInTheDocument();
+      expect(container.querySelector("svg")).toBeNull();
     });
 
-    it("shows timestamp", () => {
-      render(<MessageBubble msg={makeMsg({ type: "user" })} />);
-      expect(screen.getByText("14:30")).toBeInTheDocument();
+    it("renders safe request metadata without exposing an attachment path", () => {
+      render(
+        <MessageBubble
+          msg={makeMsg({
+            type: "user",
+            content: "Analyze this",
+            meta: {
+              attachment: { filename: "trades.csv" },
+              swarmMode: true,
+            },
+          })}
+        />,
+      );
+      expect(screen.getByText("trades.csv")).toBeInTheDocument();
+      expect(screen.getByText(i18n.t("agent.swarmModeChip" as never))).toBeInTheDocument();
+      expect(screen.queryByText(/\/private\/tmp|file_path|path:/i)).not.toBeInTheDocument();
+      expect(screen.getByText("trades.csv").parentElement).toHaveClass(
+        "bg-background/60",
+        "text-muted-foreground",
+      );
     });
   });
 
@@ -44,6 +79,34 @@ describe("MessageBubble", () => {
     it("renders markdown content", () => {
       render(<MessageBubble msg={makeMsg({ type: "answer", content: "Here is the **analysis**" })} />);
       expect(screen.getByTestId("markdown")).toHaveTextContent("Here is the **analysis**");
+    });
+
+    it("uses the streaming-compatible content shape and omits the timestamp", () => {
+      const { container } = render(
+        <MessageBubble msg={makeMsg({ type: "answer", content: "Analysis" })} />,
+      );
+      expect(screen.getByTestId("markdown").parentElement).toHaveClass(
+        "prose",
+        "text-[15px]",
+      );
+      expect(container.firstElementChild?.children[1]).toHaveClass(
+        "flex-1",
+        "min-w-0",
+        "space-y-1.5",
+      );
+      expect(screen.queryByText("14:30")).not.toBeInTheDocument();
+    });
+
+    it("exposes the copy action to keyboard focus and announces success", async () => {
+      render(<MessageBubble msg={makeMsg({ type: "answer", content: "Analysis" })} />);
+      const copyButton = screen.getByRole("button", { name: "Copy" });
+      expect(copyButton).toHaveClass("focus-visible:opacity-100");
+
+      const user = userEvent.setup();
+      await user.click(copyButton);
+
+      expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent("Copied");
     });
   });
 

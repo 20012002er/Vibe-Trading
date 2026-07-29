@@ -12,15 +12,15 @@ describe("ConnectionBanner", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("shows reconnecting message with attempt number", () => {
+  it("shows the calm reconnecting message regardless of attempt count", () => {
     render(<ConnectionBanner status="reconnecting" retryAttempt={3} />);
     expect(screen.getByText(/reconnecting/i)).toBeInTheDocument();
-    expect(screen.getByText(/attempt 3/)).toBeInTheDocument();
+    expect(screen.getByText(/Reconnecting/)).toBeInTheDocument();
   });
 
-  it("defaults to attempt 1 when retryAttempt is not provided", () => {
+  it("renders the same message when retryAttempt is not provided", () => {
     render(<ConnectionBanner status="reconnecting" />);
-    expect(screen.getByText(/attempt 1/)).toBeInTheDocument();
+    expect(screen.getByText(/Reconnecting/)).toBeInTheDocument();
   });
 
   it("has warning styling", () => {

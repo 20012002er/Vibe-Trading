@@ -2,10 +2,24 @@ import { localizeToolName, TOOL_LABELS } from "../tools";
 
 describe("TOOL_LABELS", () => {
   it("maps known tool names to user-facing labels", () => {
-    expect(TOOL_LABELS["run_backtest"]).toBe("Run backtest");
+    expect(TOOL_LABELS["backtest"]).toBe("Run backtest");
     expect(TOOL_LABELS["write_file"]).toBe("Generate code");
+    expect(TOOL_LABELS["edit_file"]).toBe("Edit code");
     expect(TOOL_LABELS["bash"]).toBe("Run command");
     expect(TOOL_LABELS["compact"]).toBe("Summarize conversation");
+  });
+
+  it("maps every demo-path tool to an English user-facing label", () => {
+    expect(TOOL_LABELS).toMatchObject({
+      get_market_data: "Get market data",
+      screen_market: "Screen market",
+      factor_analysis: "Analyze factors",
+      run_swarm: "Run agent team",
+      web_search: "Search the web",
+      financial_rigor: "Verify financial analysis",
+      render_shadow_report: "Create shadow report",
+      get_fundamentals: "Get fundamentals",
+    });
   });
 
   it("contains all trading connector tools", () => {
@@ -16,7 +30,7 @@ describe("TOOL_LABELS", () => {
 
 describe("localizeToolName", () => {
   it("returns label for known tools", () => {
-    expect(localizeToolName("run_backtest")).toBe("Run backtest");
+    expect(localizeToolName("backtest")).toBe("Run backtest");
   });
 
   it("returns fallback for unknown tools when fallback provided", () => {

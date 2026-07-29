@@ -1,12 +1,13 @@
 import i18n from '@/i18n';
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { GitCompare, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { api, type RunListItem, type RunData, type EquityPoint } from "@/lib/api";
 import { echarts, CHART_GROUP, connectCharts } from "@/lib/echarts";
 import { getChartTheme } from "@/lib/chart-theme";
-import { useDarkMode } from "@/hooks/useDarkMode";
+import { useThemeDark } from "@/lib/theme-store";
 import { SkeletonChart, SkeletonMetrics } from "@/components/common/Skeleton";
 
 interface MetricDef {
@@ -25,12 +26,26 @@ function fmt(v: unknown, type: "pct" | "num" | "int" | "days" = "num"): string {
   return n.toFixed(3);
 }
 
-function diffClass(a: unknown, b: unknown, higherIsBetter: boolean): string {
+type DiffPresentation = {
+  className: string;
+  verdict: "better" | "worse" | null;
+  glyph: "\u2191" | "\u2193" | null;
+};
+
+function diffClass(a: unknown, b: unknown, higherIsBetter: boolean): DiffPresentation {
   const na = Number(a), nb = Number(b);
-  if (!Number.isFinite(na) || !Number.isFinite(nb)) return "";
+  if (!Number.isFinite(na) || !Number.isFinite(nb)) {
+    return { className: "", verdict: null, glyph: null };
+  }
   const better = higherIsBetter ? nb > na : nb < na;
   const worse = higherIsBetter ? nb < na : nb > na;
-  return better ? "text-green-600 dark:text-green-400" : worse ? "text-red-600 dark:text-red-400" : "";
+  if (better) {
+    return { className: "text-green-600 dark:text-green-400", verdict: "better", glyph: "\u2191" };
+  }
+  if (worse) {
+    return { className: "text-red-600 dark:text-red-400", verdict: "worse", glyph: "\u2193" };
+  }
+  return { className: "", verdict: null, glyph: null };
 }
 
 function diffStr(a: unknown, b: unknown, type: "pct" | "num" | "int" | "days"): string {
@@ -101,7 +116,7 @@ interface EquityChartOverlayProps {
 
 function EquityChartOverlay({ leftCurve, rightCurve, leftLabel, rightLabel }: EquityChartOverlayProps) {
   const ref = useRef<HTMLDivElement>(null);
-  const { dark } = useDarkMode();
+  const dark = useThemeDark();
 
   useEffect(() => {
     if (!ref.current) return;
@@ -188,9 +203,20 @@ function EquityChartOverlay({ leftCurve, rightCurve, leftLabel, rightLabel }: Eq
       ],
     });
 
-    const ro = new ResizeObserver(() => chart.resize());
+    let resizeFrame: number | null = null;
+    const ro = new ResizeObserver(() => {
+      if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = null;
+        chart.resize();
+      });
+    });
     ro.observe(ref.current!);
-    return () => { ro.disconnect(); chart.dispose(); };
+    return () => {
+      ro.disconnect();
+      if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+      chart.dispose();
+    };
   }, [leftCurve, rightCurve, leftLabel, rightLabel, dark]);
 
   if (leftCurve.length === 0 && rightCurve.length === 0) return null;
@@ -199,6 +225,7 @@ function EquityChartOverlay({ leftCurve, rightCurve, leftLabel, rightLabel }: Eq
 }
 
 export function Compare() {
+  const { t } = useTranslation();
   const [runs, setRuns] = useState<RunListItem[]>([]);
   const [leftId, setLeftId] = useState("");
   const [rightId, setRightId] = useState("");
@@ -290,15 +317,15 @@ export function Compare() {
 
   return (
     <div className="p-8 max-w-4xl space-y-6">
-      <h1 className="text-xl font-bold flex items-center gap-2">
-        <GitCompare className="h-5 w-5" /> Strategy Comparison
+      <h1 className="flex items-center gap-2 text-2xl font-semibold">
+        <GitCompare className="h-5 w-5" aria-hidden="true" /> {t("compare.title")}
       </h1>
 
       {/* Selectors */}
-      <div className="flex gap-4 items-end">
+      <div className="flex gap-4 items-end rounded-xl border border-border/60 bg-card p-4 shadow-sm">
         <div className="flex-1">
           <label className="text-xs text-muted-foreground block mb-1">{i18n.t("compare.baseline")}</label>
-          <select value={leftId} onChange={(e) => setLeftId(e.target.value)} className="w-full px-3 py-2 rounded-lg border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" title={leftRun?.prompt || leftId}>
+          <select value={leftId} onChange={(e) => setLeftId(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" title={leftRun?.prompt || leftId}>
             <option value="">{i18n.t("compare.select")}</option>
             {runs.map((r) => <option key={r.run_id} value={r.run_id}>{runLabel(r)} ({r.status})</option>)}
           </select>
@@ -306,7 +333,7 @@ export function Compare() {
         <ArrowRight className="h-5 w-5 text-muted-foreground mb-2 shrink-0" />
         <div className="flex-1">
           <label className="text-xs text-muted-foreground block mb-1">{i18n.t("compare.compare")}</label>
-          <select value={rightId} onChange={(e) => setRightId(e.target.value)} className="w-full px-3 py-2 rounded-lg border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" title={rightRun?.prompt || rightId}>
+          <select value={rightId} onChange={(e) => setRightId(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" title={rightRun?.prompt || rightId}>
             <option value="">{i18n.t("compare.select")}</option>
             {runs.map((r) => <option key={r.run_id} value={r.run_id}>{runLabel(r)} ({r.status})</option>)}
           </select>
@@ -316,11 +343,11 @@ export function Compare() {
       {/* Loading state — show skeletons while a selected run's data is in flight */}
       {loading && !hasData && (
         <div className="space-y-6">
-          <div className="border rounded-xl p-4">
-            <h2 className="text-sm font-medium text-muted-foreground mb-2">{i18n.t("compare.equityDrawdown")}</h2>
+          <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+            <h2 className="text-sm font-semibold text-muted-foreground mb-2">{i18n.t("compare.equityDrawdown")}</h2>
             <SkeletonChart height={320} />
           </div>
-          <div className="border rounded-xl overflow-hidden">
+          <div className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm">
             <SkeletonMetrics />
           </div>
         </div>
@@ -328,8 +355,8 @@ export function Compare() {
 
       {/* Equity curve overlay */}
       {(leftCurve.length > 0 || rightCurve.length > 0) && (
-        <div className="border rounded-xl p-4">
-          <h2 className="text-sm font-medium text-muted-foreground mb-2">{i18n.t("compare.equityDrawdown")}</h2>
+        <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-muted-foreground mb-2">{i18n.t("compare.equityDrawdown")}</h2>
           <EquityChartOverlay
             leftCurve={leftCurve}
             rightCurve={rightCurve}
@@ -341,26 +368,40 @@ export function Compare() {
 
       {/* Metrics table */}
       {(leftData || rightData) && (
-        <div className="border rounded-xl overflow-hidden">
+        <div className="overflow-x-auto rounded-xl border border-border/60 bg-card shadow-sm">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b bg-muted/40">
-                <th className="text-left px-4 py-2.5 text-muted-foreground font-medium">{i18n.t("compare.metric")}</th>
-                <th className="text-right px-4 py-2.5 text-muted-foreground font-medium">{i18n.t("compare.baselineCol")}</th>
-                <th className="text-right px-4 py-2.5 text-muted-foreground font-medium">{i18n.t("compare.compareCol")}</th>
-                <th className="text-right px-4 py-2.5 text-muted-foreground font-medium">{i18n.t("compare.delta")}</th>
+              <tr className="border-b bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground [&_th]:font-medium">
+                <th className="text-left px-4 py-2.5 font-medium">{i18n.t("compare.metric")}</th>
+                <th className="text-right px-4 py-2.5 font-medium">{i18n.t("compare.baselineCol")}</th>
+                <th className="text-right px-4 py-2.5 font-medium">{i18n.t("compare.compareCol")}</th>
+                <th className="text-right px-4 py-2.5 font-medium">{i18n.t("compare.delta")}</th>
               </tr>
             </thead>
             <tbody>
               {METRICS.map(({ key, label, type, higherIsBetter }) => {
                 const lv = resolveMetric(leftData, key);
                 const rv = resolveMetric(rightData, key);
+                const diff = diffClass(lv, rv, higherIsBetter);
                 return (
-                  <tr key={key} className="border-b last:border-0 hover:bg-muted/20">
+                  <tr key={key} className="border-b last:border-0 hover:bg-muted/40">
                     <td className="px-4 py-2.5 font-medium">{label}</td>
                     <td className="px-4 py-2.5 text-right font-mono tabular-nums">{fmt(lv, type)}</td>
                     <td className="px-4 py-2.5 text-right font-mono tabular-nums">{fmt(rv, type)}</td>
-                    <td className={cn("px-4 py-2.5 text-right font-mono tabular-nums font-semibold", diffClass(lv, rv, higherIsBetter))}>{diffStr(lv, rv, type)}</td>
+                    <td className={cn("px-4 py-2.5 text-right font-mono tabular-nums font-semibold", diff.className)}>
+                      {diff.verdict && (
+                        <>
+                          <span aria-hidden="true">{diff.glyph} </span>
+                          <span className="sr-only">
+                            {t(`compare.${diff.verdict}`, {
+                              defaultValue: diff.verdict === "better" ? "Better" : "Worse",
+                            })}
+                            {": "}
+                          </span>
+                        </>
+                      )}
+                      {diffStr(lv, rv, type)}
+                    </td>
                   </tr>
                 );
               })}
