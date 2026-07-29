@@ -39,6 +39,11 @@ interface AgentState {
 
   addToolCall: (entry: ToolCallEntry) => void;
   updateToolCall: (id: string, update: Partial<ToolCallEntry>) => void;
+  updateRunningToolCall: (
+    callId: string | undefined,
+    tool: string,
+    update: Partial<ToolCallEntry>,
+  ) => void;
   updateOldestRunningToolCall: (tool: string, update: Partial<ToolCallEntry>) => void;
   upsertSwarmStatus: (status: SwarmRunStatus) => void;
   updateSwarmStatus: (runId: string, updater: (status: SwarmRunStatus) => SwarmRunStatus) => void;
@@ -113,6 +118,20 @@ export const useAgentStore = create<AgentState>((set) => ({
     set((s) => ({
       toolCalls: s.toolCalls.map((tc) => tc.id === id ? { ...tc, ...update } : tc),
     })),
+  updateRunningToolCall: (callId, tool, update) =>
+    set((s) => {
+      const idx = callId
+        ? s.toolCalls.findIndex(
+            (tc) => tc.id === callId && tc.status === "running",
+          )
+        : s.toolCalls.findIndex(
+            (tc) => tc.tool === tool && tc.status === "running",
+          );
+      if (idx < 0) return {};
+      const toolCalls = [...s.toolCalls];
+      toolCalls[idx] = { ...toolCalls[idx], ...update };
+      return { toolCalls };
+    }),
   updateOldestRunningToolCall: (tool, update) =>
     set((s) => {
       let idx = -1;

@@ -1,3 +1,4 @@
+import i18n from "@/i18n";
 import { authHeaders, withAuthTicket } from "@/lib/apiAuth";
 
 const BASE = "";
@@ -12,8 +13,18 @@ export class ApiError extends Error {
   }
 }
 
-export const AUTH_REQUIRED_MESSAGE =
-  "Remote API access requires an API key. Add it in Settings, or run the backend on localhost for local-only use.";
+const AUTH_REQUIRED_MESSAGE_KEY = "agent.authRequired";
+
+function getAuthRequiredMessage(): string {
+  return i18n.t(AUTH_REQUIRED_MESSAGE_KEY as never);
+}
+
+// Keep the existing string export compatible with consumers while updating its
+// live ES-module binding whenever the active locale changes.
+export let AUTH_REQUIRED_MESSAGE = getAuthRequiredMessage();
+i18n.on("languageChanged", () => {
+  AUTH_REQUIRED_MESSAGE = getAuthRequiredMessage();
+});
 
 export function isAuthRequiredError(error: unknown): boolean {
   return error instanceof ApiError && (error.status === 401 || error.status === 403);
@@ -53,7 +64,7 @@ async function errorFromResponse(res: Response): Promise<ApiError> {
     detail = body.detail || body.message || detail;
   } catch { /* ignore */ }
   if (res.status === 401 || res.status === 403) {
-    detail = AUTH_REQUIRED_MESSAGE;
+    detail = getAuthRequiredMessage();
   }
   return new ApiError(detail, res.status);
 }
@@ -1044,4 +1055,15 @@ export interface MessageItem {
   created_at: string;
   linked_attempt_id?: string;
   metadata?: Record<string, unknown>;
+  tool_trail?: ToolTrailItem[];
+}
+
+export interface ToolTrailItem {
+  tool: string;
+  status: "running" | "ok" | "error";
+  arguments?: Record<string, string>;
+  elapsed_ms?: number;
+  preview?: string;
+  call_id?: string;
+  timestamp?: number;
 }

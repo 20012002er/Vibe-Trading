@@ -8,6 +8,23 @@ import { router } from "./router";
 import "highlight.js/styles/github-dark-dimmed.min.css";
 import "./index.css";
 
+const prefetchMiniEquityChart = () => {
+  void import("@/components/charts/MiniEquityChart");
+};
+
+const idleWindow = window as Window & {
+  requestIdleCallback?: (
+    callback: IdleRequestCallback,
+    options?: IdleRequestOptions,
+  ) => number;
+};
+
+if (typeof idleWindow.requestIdleCallback === "function") {
+  idleWindow.requestIdleCallback(prefetchMiniEquityChart, { timeout: 2000 });
+} else {
+  window.setTimeout(prefetchMiniEquityChart, 0);
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>

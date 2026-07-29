@@ -92,6 +92,7 @@ class Message:
         created_at: Creation time in ISO format.
         linked_attempt_id: Related Attempt ID, if any.
         metadata: Additional metadata.
+        tool_trail: Compact completed tool-call records for history hydration.
     """
 
     message_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
@@ -101,6 +102,7 @@ class Message:
     created_at: str = field(default_factory=_utc_now_iso)
     linked_attempt_id: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+    tool_trail: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize the message to a dictionary.

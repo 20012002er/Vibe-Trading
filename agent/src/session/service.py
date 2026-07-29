@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -176,6 +177,11 @@ class SessionService:
                 content=self._format_result_message(attempt),
                 linked_attempt_id=attempt.attempt_id,
                 metadata=reply_metadata,
+                tool_trail=(
+                    result.get("tool_trail", [])
+                    if attempt.status == AttemptStatus.COMPLETED
+                    else []
+                ),
             )
             self.store.append_message(reply)
             self._search_index.index_message(session.session_id, "assistant", reply.content)
@@ -225,12 +231,15 @@ class SessionService:
         session_id = attempt.session_id
         attempt_id = attempt.attempt_id
         loop = asyncio.get_running_loop()
+        tool_trail: list[Dict[str, Any]] = []
 
         safe_overrides = sanitize_session_overrides(session_config) if session_config else session_config
         agent_config = load_runtime_agent_config(overrides=safe_overrides)
 
         def event_callback(event_type: str, data: Dict[str, Any]) -> None:
             """Forward AgentLoop events to the SSE event bus."""
+            if event_type in {"tool_call", "tool_result"}:
+                self._record_tool_trail_event(tool_trail, event_type, data)
             data["attempt_id"] = attempt_id
             self.event_bus.emit(session_id, event_type, data)
 
@@ -274,6 +283,8 @@ class SessionService:
         finally:
             self._active_loops.pop(session_id, None)
 
+        result["tool_trail"] = tool_trail
+
         # Load metrics from the run output when available.
         if result.get("run_dir"):
             metrics = self._load_metrics(Path(result["run_dir"]))
@@ -281,6 +292,79 @@ class SessionService:
                 result["metrics"] = metrics
 
         return result
+
+    @staticmethod
+    def _record_tool_trail_event(
+        tool_trail: list[Dict[str, Any]],
+        event_type: str,
+        data: Dict[str, Any],
+    ) -> None:
+        """Consolidate live tool events into a compact history record.
+
+        Args:
+            tool_trail: Mutable per-attempt trail.
+            event_type: Agent event type (`tool_call` or `tool_result`).
+            data: Already-redacted live event payload.
+        """
+        tool = str(data.get("tool") or "")
+        if not tool:
+            return
+
+        call_id_value = data.get("call_id")
+        call_id = call_id_value if isinstance(call_id_value, str) and call_id_value else None
+
+        if event_type == "tool_call":
+            entry: Dict[str, Any] = {
+                "tool": tool,
+                "status": "running",
+                "arguments": (
+                    dict(data["arguments"])
+                    if isinstance(data.get("arguments"), dict)
+                    else {}
+                ),
+                "timestamp": int(time.time() * 1000),
+            }
+            if call_id:
+                entry["call_id"] = call_id
+            tool_trail.append(entry)
+            return
+
+        match = None
+        if call_id:
+            match = next(
+                (
+                    entry
+                    for entry in tool_trail
+                    if entry.get("call_id") == call_id
+                    and entry.get("status") == "running"
+                ),
+                None,
+            )
+        if match is None:
+            match = next(
+                (
+                    entry
+                    for entry in tool_trail
+                    if entry.get("tool") == tool
+                    and entry.get("status") == "running"
+                ),
+                None,
+            )
+        if match is None:
+            match = {
+                "tool": tool,
+                "arguments": {},
+                "timestamp": int(time.time() * 1000),
+            }
+            tool_trail.append(match)
+
+        match["status"] = "ok" if data.get("status") == "ok" else "error"
+        elapsed_ms = data.get("elapsed_ms")
+        if isinstance(elapsed_ms, (int, float)) and not isinstance(elapsed_ms, bool):
+            match["elapsed_ms"] = max(0, int(elapsed_ms))
+        match["preview"] = str(data.get("preview") or "")
+        if call_id:
+            match["call_id"] = call_id
 
     @staticmethod
     def _convert_messages_to_history(messages: list) -> list[Dict[str, Any]]:

@@ -135,18 +135,69 @@ describe("tool calls", () => {
     expect(useAgentStore.getState().toolCalls[0].status).toBe("running");
   });
 
+  it("matches interleaved parallel same-name calls by call_id", () => {
+    const store = useAgentStore.getState();
+    store.addToolCall(makeToolCall({ id: "call-1", tool: "search" }));
+    store.addToolCall(makeToolCall({ id: "call-2", tool: "search" }));
+
+    store.updateRunningToolCall("call-2", "search", {
+      elapsed_s: 2,
+      progress: { stage: "second", current: 8, total: 10 },
+    });
+    store.updateRunningToolCall("call-1", "search", {
+      elapsed_s: 4,
+      progress: { stage: "first", current: 3, total: 10 },
+    });
+    store.updateRunningToolCall("call-2", "search", {
+      status: "ok",
+      preview: "second-result",
+    });
+
+    expect(useAgentStore.getState().toolCalls).toMatchObject([
+      {
+        id: "call-1",
+        status: "running",
+        elapsed_s: 4,
+        progress: { stage: "first", current: 3, total: 10 },
+      },
+      {
+        id: "call-2",
+        status: "ok",
+        elapsed_s: 2,
+        preview: "second-result",
+        progress: { stage: "second", current: 8, total: 10 },
+      },
+    ]);
+
+    store.updateRunningToolCall("call-1", "search", {
+      status: "error",
+      preview: "first-result",
+    });
+    expect(useAgentStore.getState().toolCalls.map((tc) => tc.status)).toEqual([
+      "error",
+      "ok",
+    ]);
+  });
+
+  it("does not fall back to tool name when a call_id is unknown", () => {
+    const store = useAgentStore.getState();
+    store.addToolCall(makeToolCall({ id: "call-1", tool: "search" }));
+    store.updateRunningToolCall("missing-call", "search", { status: "ok" });
+    expect(useAgentStore.getState().toolCalls[0].status).toBe("running");
+  });
+
   it("updates repeated running tool calls in FIFO order", () => {
     const store = useAgentStore.getState();
     store.addToolCall(makeToolCall({ id: "search#1", tool: "search" }));
     store.addToolCall(makeToolCall({ id: "search#2", tool: "search" }));
 
-    store.updateOldestRunningToolCall("search", { status: "ok" });
+    store.updateRunningToolCall(undefined, "search", { status: "ok" });
     expect(useAgentStore.getState().toolCalls.map((tc) => tc.status)).toEqual([
       "ok",
       "running",
     ]);
 
-    store.updateOldestRunningToolCall("search", { status: "error" });
+    store.updateRunningToolCall(undefined, "search", { status: "error" });
     expect(useAgentStore.getState().toolCalls.map((tc) => tc.status)).toEqual([
       "ok",
       "error",

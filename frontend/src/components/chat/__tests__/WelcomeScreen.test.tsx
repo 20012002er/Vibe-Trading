@@ -117,6 +117,11 @@ describe("WelcomeScreen", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "true");
     expect(library).toHaveAttribute("aria-hidden", "false");
     expect(within(library!).getAllByRole("button")).toHaveLength(21);
+    expect(library!.querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(8);
+    expect(within(library!).getAllByRole("button")[0]).toHaveClass(
+      "focus-visible:ring-2",
+      "focus-visible:ring-primary/40",
+    );
     for (const category of [
       "A-Share Backtest",
       "Research & Analysis",
@@ -129,6 +134,23 @@ describe("WelcomeScreen", () => {
     ]) {
       expect(within(library!).getByText(category)).toBeInTheDocument();
     }
+  });
+
+  it("closes the example library with Escape and restores focus to its trigger", async () => {
+    const user = userEvent.setup();
+    render(<WelcomeScreen onExample={onExample} />);
+
+    const trigger = screen.getByRole("button", { name: "Browse all examples" });
+    await user.click(trigger);
+    const library = document.getElementById("welcome-example-library")!;
+    const firstExample = within(library).getAllByRole("button")[0];
+    firstExample.focus();
+
+    await user.keyboard("{Escape}");
+
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(library).toHaveAttribute("aria-hidden", "true");
+    expect(trigger).toHaveFocus();
   });
 
   it("does not render capability chips", () => {

@@ -665,6 +665,7 @@ def run_worker(
             _emit(
                 event_callback, "tool_call", agent_id, task_id,
                 {"tool": tc.name, "iteration": iteration,
+                 "call_id": tc.id,
                  "arguments": _preview_tool_arguments(tc.arguments),
                  **mcp_meta},
             )
@@ -701,6 +702,7 @@ def run_worker(
                 task_id,
                 {
                     "tool": tc.name,
+                    "call_id": tc.id,
                     "elapsed_ms": int(tc_elapsed * 1000),
                     "status": "error" if result_is_error else "ok",
                     "iteration": iteration,

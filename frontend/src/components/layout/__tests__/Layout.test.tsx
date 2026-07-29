@@ -95,6 +95,7 @@ describe("Layout accessibility", () => {
     expect(screen.getByRole("link", { name: "New Chat" })).toHaveAttribute("title", "New Chat");
     expect(screen.getByText("Skip to main content")).toHaveAttribute("href", "#main");
     expect(screen.getByRole("main")).toHaveAttribute("id", "main");
+    expect(screen.getByRole("main").parentElement).toHaveClass("relative");
   });
 
   it("exposes session actions on keyboard focus and labels the rename input", async () => {
@@ -122,5 +123,25 @@ describe("Layout accessibility", () => {
     });
 
     expect(() => renderLayout()).not.toThrow();
+  });
+
+  it("uses button disclosure semantics for the language switcher", () => {
+    renderLayout();
+
+    const languageButton = screen.getByRole("button", { name: "Language" });
+    expect(languageButton).toHaveAttribute("aria-expanded", "false");
+    expect(languageButton).not.toHaveAttribute("aria-haspopup");
+  });
+
+  it("synchronizes the sidebar preference from another tab", () => {
+    window.localStorage.setItem("qa-sidebar", "expanded");
+    renderLayout();
+    const sidebar = screen.getByRole("complementary", { name: "Vibe-Trading sidebar" });
+    expect(sidebar).toHaveClass("w-64");
+
+    window.localStorage.setItem("qa-sidebar", "collapsed");
+    fireEvent(window, new StorageEvent("storage", { key: "qa-sidebar" }));
+
+    expect(sidebar).toHaveClass("w-12");
   });
 });

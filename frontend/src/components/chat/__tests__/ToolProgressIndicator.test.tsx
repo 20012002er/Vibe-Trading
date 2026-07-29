@@ -32,7 +32,7 @@ describe("ToolProgressIndicator", () => {
     const tcs = [makeTc({ status: "ok" }), makeTc({ id: "tc-2", status: "error" })];
     render(<ToolProgressIndicator toolCalls={tcs} />);
     expect(screen.getAllByText("2 tools completed")).toHaveLength(2);
-    expect(screen.getAllByText(/Run backtest/)).toHaveLength(2);
+    expect(screen.getAllByText(/Run the backtest/)).toHaveLength(2);
   });
 
   it("renders nothing for empty array", () => {
@@ -44,7 +44,7 @@ describe("ToolProgressIndicator", () => {
     const tcs = [makeTc({ elapsed_s: 5 })];
     render(<ToolProgressIndicator toolCalls={tcs} />);
     expect(screen.getByRole("status")).toBeInTheDocument();
-    expect(screen.getByText(/Run backtest/)).toBeInTheDocument();
+    expect(screen.getByText(/Run the backtest/)).toBeInTheDocument();
     expect(screen.getByText("5s")).toBeInTheDocument();
   });
 
@@ -65,7 +65,7 @@ describe("ToolProgressIndicator", () => {
       makeTc({ id: "backtest#2", status: "running" }),
     ];
     render(<ToolProgressIndicator toolCalls={tcs} />);
-    expect(screen.getAllByText(/Run backtest/)).toHaveLength(2);
+    expect(screen.getAllByText(/Run the backtest/)).toHaveLength(2);
   });
 
   it("shows the most recent running tools behind a clickable earlier count", async () => {
@@ -80,7 +80,7 @@ describe("ToolProgressIndicator", () => {
 
     expect(screen.queryByText(/Run command/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Generate code/)).not.toBeInTheDocument();
-    expect(screen.getByText(/Run backtest/)).toBeInTheDocument();
+    expect(screen.getByText(/Run the backtest/)).toBeInTheDocument();
     expect(screen.getByText(/Read file/)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "+2 earlier" }));
@@ -101,7 +101,7 @@ describe("ToolProgressIndicator", () => {
     const visibleSteps = screen.getAllByText(/^Step /).map((node) => node.textContent);
     expect(visibleSteps).toEqual([
       "Step 4 · Read file",
-      "Step 3 · Run backtest",
+      "Step 3 · Run the backtest",
     ]);
     expect(screen.queryByText(/Generate code/)).not.toBeInTheDocument();
 

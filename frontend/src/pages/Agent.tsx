@@ -26,6 +26,7 @@ import {
   buildSwarmStatusFromStarted,
   buildSwarmStatusFromToolResultPreview,
 } from "@/lib/swarmStatus";
+import { buildToolTimelineMessages } from "@/pages/agentToolTimeline";
 
 /* ---------- Message grouping ---------- */
 type MsgGroup =
@@ -57,6 +58,22 @@ function groupMessages(msgs: StoredAgentMessage[]): MsgGroup[] {
 }
 
 const act = () => useAgentStore.getState();
+
+function eventCallId(data: Record<string, unknown>): string | undefined {
+  return typeof data.call_id === "string" && data.call_id
+    ? data.call_id
+    : undefined;
+}
+
+interface PendingToolProgress {
+  callId?: string;
+  tool: string;
+  progress: NonNullable<ToolCallEntry["progress"]>;
+}
+
+function toolProgressKey(callId: string | undefined, tool: string): string {
+  return callId ? `call:${callId}` : `tool:${tool}`;
+}
 
 // i18n hook for Agent component — used inside the component below
 // (declared at module scope for helper usage is fine since t() reads from i18n singleton)
@@ -286,8 +303,8 @@ export function Agent() {
   const lastEventRef = useRef(0);
   const sseTimeoutMsRef = useRef(90_000);
 
-  /* tool_progress coalescing — keep latest payload per-tool, flush once per rAF. */
-  const pendingProgressRef = useRef<Map<string, NonNullable<ToolCallEntry["progress"]>>>(new Map());
+  /* tool_progress coalescing — keep latest payload per invocation, flush once per rAF. */
+  const pendingProgressRef = useRef<Map<string, PendingToolProgress>>(new Map());
   const progressRafRef = useRef(0);
   const pendingTextRef = useRef("");
   const pendingReasoningRef = useRef<boolean | null>(null);
@@ -537,6 +554,17 @@ export function Agent() {
         const runId = meta?.run_id as string | undefined;
         const metrics = meta?.metrics as Record<string, number> | undefined;
         const ts = new Date(m.created_at).getTime();
+        const toolTimeline = m.role === "assistant"
+          ? buildToolTimelineMessages(m.tool_trail ?? [], {
+              fallbackTimestamp: ts,
+              idPrefix: `${m.message_id}_`,
+            })
+          : [];
+        agentMsgs.push(...toolTimeline);
+        const lastToolTimestamp = toolTimeline.length > 0
+          ? toolTimeline[toolTimeline.length - 1].timestamp
+          : ts - 1;
+        const assistantTs = Math.max(ts, lastToolTimestamp + 1);
         if (m.role === "user") {
           const displayPrompt = toDisplayPrompt(m.content);
           agentMsgs.push({
@@ -549,10 +577,10 @@ export function Agent() {
         } else if (runId) {
           // Show text answer first (if non-empty), then chart card
           if (m.content && m.content !== "Strategy execution completed.") {
-            agentMsgs.push({ id: m.message_id + "_ans", type: "answer", content: m.content, timestamp: ts });
+            agentMsgs.push({ id: m.message_id + "_ans", type: "answer", content: m.content, timestamp: assistantTs });
           }
           if (metrics && Object.keys(metrics).length > 0) {
-            agentMsgs.push({ id: m.message_id, type: "run_complete", content: "", runId, metrics, timestamp: ts + 1 });
+            agentMsgs.push({ id: m.message_id, type: "run_complete", content: "", runId, metrics, timestamp: assistantTs + 1 });
           } else {
             // Fetch run data to check report-worthiness; show fallback card if fetch fails
             let fetchedMetrics: Record<string, number> | undefined;
@@ -578,12 +606,12 @@ export function Agent() {
                 runId,
                 metrics: fetchedMetrics,
                 equityCurve: fetchedCurve,
-                timestamp: ts + 1,
+                timestamp: assistantTs + 1,
               });
             }
           }
         } else {
-          agentMsgs.push({ id: m.message_id, type: "answer", content: m.content, timestamp: ts });
+          agentMsgs.push({ id: m.message_id, type: "answer", content: m.content, timestamp: assistantTs });
         }
       }
       if (genRef.current !== gen) return;
@@ -662,10 +690,11 @@ export function Agent() {
         replayAttemptSeenRef.current = true;
         queueStreamUpdate("", false);
         const toolName = String(d.tool || "");
+        const callId = eventCallId(d);
         toolCallSeqRef.current += 1;
         // Only update toolCalls tracker (no message creation during streaming)
         act().addToolCall({
-          id: `${toolName}#${toolCallSeqRef.current}`, tool: toolName,
+          id: callId ?? `${toolName}#${toolCallSeqRef.current}`, tool: toolName,
           arguments: (d.arguments as Record<string, string>) ?? {},
           status: "running", timestamp: Date.now(),
         });
@@ -675,10 +704,11 @@ export function Agent() {
       tool_result: (d) => {
         touch();
         const toolName = String(d.tool || "");
-        // Drop any in-flight coalesced progress for this tool.
-        pendingProgressRef.current.delete(toolName);
+        const callId = eventCallId(d);
+        // Drop any in-flight coalesced progress for this invocation.
+        pendingProgressRef.current.delete(toolProgressKey(callId, toolName));
         // Only update tracker (no message creation during streaming)
-        act().updateOldestRunningToolCall(toolName, {
+        act().updateRunningToolCall(callId, toolName, {
           status: d.status === "ok" ? "ok" : "error",
           preview: String(d.preview || ""),
           elapsed_ms: Number(d.elapsed_ms || 0),
@@ -700,7 +730,7 @@ export function Agent() {
         if (act().status !== "streaming") act().setStatus("streaming");
         const toolName = String(d.tool || "");
         if (!toolName) return;
-        act().updateOldestRunningToolCall(toolName, {
+        act().updateRunningToolCall(eventCallId(d), toolName, {
           elapsed_s: Number(d.elapsed_s || 0),
         });
       },
@@ -710,21 +740,25 @@ export function Agent() {
         replayAttemptSeenRef.current = true;
         const toolName = String(d.tool || "");
         if (!toolName) return;
+        const callId = eventCallId(d);
         const payload: NonNullable<ToolCallEntry["progress"]> = {};
         if (typeof d.stage === "string" && d.stage) payload.stage = d.stage;
         if (typeof d.message === "string" && d.message) payload.message = d.message;
         if (typeof d.current === "number") payload.current = d.current;
         if (typeof d.total === "number") payload.total = d.total;
-        // Coalesce: keep latest payload per tool, flush once per animation frame.
-        pendingProgressRef.current.set(toolName, payload);
+        // Coalesce: keep latest payload per invocation, flush once per animation frame.
+        pendingProgressRef.current.set(
+          toolProgressKey(callId, toolName),
+          { callId, tool: toolName, progress: payload },
+        );
         if (progressRafRef.current) return;
         progressRafRef.current = requestAnimationFrame(() => {
           progressRafRef.current = 0;
           const pending = pendingProgressRef.current;
           if (pending.size === 0) return;
           const store = act();
-          for (const [tool, progress] of pending) {
-            store.updateOldestRunningToolCall(tool, { progress });
+          for (const { callId: pendingCallId, tool, progress } of pending.values()) {
+            store.updateRunningToolCall(pendingCallId, tool, { progress });
           }
           pending.clear();
         });
@@ -781,11 +815,8 @@ export function Agent() {
         // Build ThinkingTimeline summary from accumulated toolCalls
         const completedTools = s.toolCalls;
         if (completedTools.length > 0) {
-          for (const tc of completedTools) {
-            s.addMessage({ id: tc.id + "_call", type: "tool_call", content: "", tool: tc.tool, args: tc.arguments, status: tc.status || "ok", timestamp: tc.timestamp });
-            if (tc.elapsed_ms != null) {
-              s.addMessage({ id: "", type: "tool_result", content: tc.preview || "", tool: tc.tool, status: tc.status || "ok", elapsed_ms: tc.elapsed_ms, timestamp: tc.timestamp + 1 });
-            }
+          for (const message of buildToolTimelineMessages(completedTools)) {
+            s.addMessage(message);
           }
         }
 

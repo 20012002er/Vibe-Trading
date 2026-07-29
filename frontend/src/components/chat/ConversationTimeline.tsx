@@ -57,19 +57,25 @@ export const ConversationTimeline = memo(function ConversationTimeline({ message
 
   return (
     <div className="fixed right-3 top-1/2 -translate-y-1/2 h-2/3 flex flex-col justify-between items-center z-20 py-4">
-      {userIndices.map((idx) => (
-        <button
-          key={idx}
-          onClick={() => scrollTo(idx)}
-          className={cn(
-            "rounded-full transition-all shrink-0",
-            idx === activeIdx
-              ? "w-3 h-3 bg-primary shadow-sm shadow-primary/30"
-              : "w-2 h-2 bg-muted-foreground/25 hover:bg-muted-foreground/50"
-          )}
-          title={messages[idx].content.slice(0, 40)}
-        />
-      ))}
+      {userIndices.map((idx) => {
+        const prompt = messages[idx].content.slice(0, 40);
+        const active = idx === activeIdx;
+        return (
+          <button
+            key={idx}
+            onClick={() => scrollTo(idx)}
+            aria-current={active ? "true" : undefined}
+            aria-label={prompt}
+            className={cn(
+              "rounded-full transition-all shrink-0",
+              active
+                ? "w-3 h-3 bg-primary shadow-sm shadow-primary/30"
+                : "w-2 h-2 bg-muted-foreground/25 hover:bg-muted-foreground/50"
+            )}
+            title={prompt}
+          />
+        );
+      })}
     </div>
   );
 });

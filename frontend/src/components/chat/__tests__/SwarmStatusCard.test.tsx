@@ -85,7 +85,7 @@ describe("SwarmStatusCard", () => {
     );
 
     expect(html).not.toContain("0/1");
-    expect(html).not.toContain("Layer 1/1");
+    expect(html).not.toContain("Round 1 of 1");
     expect(html).not.toContain('value="0" max="1"');
     expect(html).toContain('data-layer-state="indeterminate"');
     expect(html).toContain(
@@ -101,11 +101,11 @@ describe("SwarmStatusCard", () => {
     const html = renderToStaticMarkup(<SwarmStatusCard status={makeStatus()} />);
 
     expect(html).toContain("3/6 agents");
-    expect(html).toContain("Layer 1/2");
+    expect(html).toContain("Round 1 of 2");
     expect(html).toContain('data-layer-state="determinate"');
     expect(html).toContain('role="progressbar"');
     expect(html).toContain('aria-valuemin="0"');
-    expect(html).toContain('aria-valuetext="Layer 1/2"');
+    expect(html).toContain('aria-valuetext="Round 1 of 2"');
     expect(html).toContain("grid h-1.5 min-w-0 gap-1");
     expect(html).not.toContain("grid h-2 min-w-0 gap-1");
     expect(html).not.toContain(

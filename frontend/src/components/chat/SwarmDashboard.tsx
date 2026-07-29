@@ -266,7 +266,7 @@ export const SwarmDashboard = memo(function SwarmDashboard({
       ) : (
         <>
           <div
-            className="hidden min-w-0 sm:block"
+            className="hidden min-w-0 md:block"
             data-agent-layout="wide"
             role="table"
           >
@@ -305,7 +305,7 @@ export const SwarmDashboard = memo(function SwarmDashboard({
             </div>
           </div>
 
-          <div className="space-y-2 sm:hidden" data-agent-layout="narrow">
+          <div className="space-y-2 md:hidden" data-agent-layout="narrow">
             {agents.map((agent) => (
               <NarrowAgentCard
                 agent={agent}

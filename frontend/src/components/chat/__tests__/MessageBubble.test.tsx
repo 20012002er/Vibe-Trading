@@ -30,6 +30,10 @@ function makeMsg(overrides: Partial<StoredAgentMessage> = {}): StoredAgentMessag
 }
 
 describe("MessageBubble", () => {
+  beforeAll(() => {
+    i18n.addResource("en", "translation", "messageBubble.retry", "Try again");
+  });
+
   describe("user messages", () => {
     it("renders user content in the bounded neutral bubble without an avatar or timestamp", () => {
       const { container } = render(
@@ -132,14 +136,21 @@ describe("MessageBubble", () => {
       expect(onRetry).toHaveBeenCalledWith(msg);
     });
 
-    it("shows timeout hint for timeout errors", () => {
+    it("shows the timeout hint as muted text above a short retry action", () => {
       render(
         <MessageBubble
           msg={makeMsg({ type: "error", content: "Execution timed out after 600s" })}
           onRetry={vi.fn()}
         />,
       );
-      expect(screen.getByText(/Try simplifying the strategy/)).toBeInTheDocument();
+      const hint = screen.getByText(/Timed out/);
+      const retry = screen.getByRole("button", { name: "Try again" });
+
+      expect(hint.tagName).toBe("P");
+      expect(hint).toHaveClass("text-muted-foreground");
+      expect(retry).toHaveTextContent("Try again");
+      expect(retry).not.toHaveTextContent(hint.textContent ?? "");
+      expect(hint.compareDocumentPosition(retry) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
   });
 

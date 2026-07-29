@@ -52,6 +52,7 @@ class MessageResponse(BaseModel):
     created_at: str
     linked_attempt_id: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
+    tool_trail: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class CreateGoalRequest(BaseModel):
@@ -660,6 +661,7 @@ def register_sessions_routes(app: FastAPI) -> None:
                 created_at=m.created_at,
                 linked_attempt_id=m.linked_attempt_id,
                 metadata=m.metadata if m.metadata else None,
+                tool_trail=m.tool_trail,
             )
             for m in messages
         ]

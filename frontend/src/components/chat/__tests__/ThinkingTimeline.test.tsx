@@ -39,7 +39,7 @@ describe("ThinkingTimeline", () => {
     ];
 
     render(<ThinkingTimeline messages={msgs} isLatest />);
-    expect(screen.getByText(/Running Run backtest/)).toBeInTheDocument();
+    expect(screen.getByText(/Running Run the backtest/)).toBeInTheDocument();
   });
 
   it("expands and collapses on click", async () => {
@@ -113,7 +113,7 @@ describe("ThinkingTimeline", () => {
     await user.click(screen.getByRole("button"));
     expect(screen.getByText("Run command")).toBeInTheDocument();
     expect(screen.getByText("Generate code")).toBeInTheDocument();
-    expect(screen.getByText("Run backtest")).toBeInTheDocument();
+    expect(screen.getByText("Run the backtest")).toBeInTheDocument();
   });
 
   it("exposes disclosure semantics and preserves an explicit user expansion", async () => {
@@ -145,6 +145,6 @@ describe("ThinkingTimeline", () => {
       makeMsg({ type: "tool_call", tool: "unusually_long_tool_name", status: "running" }),
     ]} />);
 
-    expect(screen.getByText(/Running unusually_long_tool_name/)).toHaveClass("truncate");
+    expect(screen.getByText(/Running Unusually long tool name/)).toHaveClass("truncate");
   });
 });

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, TrendingUp, Globe, Sparkles, Users, UserCircle2, NotebookPen, Landmark, Gem } from "lucide-react";
 import { BrandMark } from "@/components/common/BrandMark";
@@ -239,6 +239,7 @@ export function WelcomeScreen({ onExample }: Props) {
   const { t } = useTranslation();
   const [greetingKey] = useState(() => pickGreetingKey());
   const [isExamplesOpen, setIsExamplesOpen] = useState(false);
+  const examplesTriggerRef = useRef<HTMLButtonElement>(null);
 
   return (
     <div className="flex w-full flex-col items-center px-4 pb-14 text-center">
@@ -278,6 +279,7 @@ export function WelcomeScreen({ onExample }: Props) {
         </div>
 
         <button
+          ref={examplesTriggerRef}
           type="button"
           aria-expanded={isExamplesOpen}
           aria-controls="welcome-example-library"
@@ -294,6 +296,13 @@ export function WelcomeScreen({ onExample }: Props) {
         <div
           id="welcome-example-library"
           aria-hidden={!isExamplesOpen}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape" || !isExamplesOpen) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setIsExamplesOpen(false);
+            examplesTriggerRef.current?.focus();
+          }}
           className={`grid text-left transition-[grid-template-rows,opacity] duration-300 ease-out ${
             isExamplesOpen
               ? "grid-rows-[1fr] opacity-100"
@@ -315,7 +324,7 @@ export function WelcomeScreen({ onExample }: Props) {
                         type="button"
                         tabIndex={isExamplesOpen ? 0 : -1}
                         onClick={() => onExample(t(ex.promptKey as any))}
-                        className="block w-full rounded-xl border border-border/60 px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-muted/40"
+                        className="block w-full rounded-xl border border-border/60 px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                       >
                         <span className="text-sm font-medium leading-snug text-foreground">
                           {t(ex.titleKey as any)}

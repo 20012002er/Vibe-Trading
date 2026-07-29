@@ -210,14 +210,17 @@ export const MessageBubble = memo(function MessageBubble({ msg, onRetry }: Props
             <p className="text-sm text-danger leading-relaxed">{msg.content}</p>
           </div>
           {onRetry && (
-            <button
-              onClick={() => onRetry(msg)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted/80 border border-transparent hover:border-border transition-all"
-              title={hint}
-            >
-              <RefreshCw className="h-3 w-3" />
-              <span>{hint}</span>
-            </button>
+            <div className="space-y-1.5">
+              <p className="text-xs leading-relaxed text-muted-foreground">{hint}</p>
+              <button
+                onClick={() => onRetry(msg)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted/80 border border-transparent hover:border-border transition-all"
+                title={i18n.t("messageBubble.retry" as never)}
+              >
+                <RefreshCw className="h-3 w-3" />
+                <span>{i18n.t("messageBubble.retry" as never)}</span>
+              </button>
+            </div>
           )}
         </div>
       </div>

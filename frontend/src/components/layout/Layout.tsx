@@ -44,6 +44,15 @@ export function Layout() {
     safeSet("qa-sidebar", collapsed ? "collapsed" : "expanded");
   }, [collapsed]);
 
+  useEffect(() => {
+    const syncSidebarPreference = (event: StorageEvent) => {
+      if (event.key !== null && event.key !== "qa-sidebar") return;
+      setCollapsed(safeGet("qa-sidebar") === "collapsed");
+    };
+    window.addEventListener("storage", syncSidebarPreference);
+    return () => window.removeEventListener("storage", syncSidebarPreference);
+  }, []);
+
   const loadSessions = () => {
     api.listSessions()
       .then((list) => setSessions(Array.isArray(list) ? list : []))
@@ -277,7 +286,7 @@ export function Layout() {
       </aside>
 
       {/* Main */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="relative flex-1 flex flex-col overflow-hidden">
         <ConnectionBanner status={sseStatus} retryAttempt={sseRetryAttempt} />
         <main id="main" className="flex-1 overflow-auto">
           <Outlet />
@@ -380,7 +389,6 @@ function LanguageSwitcher() {
         ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        aria-haspopup="menu"
         aria-expanded={open}
         aria-label={t("layout.language")}
         className="flex items-center gap-1 p-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors max-md:justify-center"

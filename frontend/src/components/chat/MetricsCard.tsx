@@ -35,7 +35,11 @@ export const MetricsCard = memo(function MetricsCard({ metrics, compact = false 
       compact ? "grid-cols-3" : "grid-cols-[repeat(auto-fit,minmax(120px,1fr))]"
     )}>
       {shown.map(({ k, v }) => (
-        <div key={k} className="text-center py-1">
+        <div
+          key={k}
+          className="text-center py-1"
+          title={i18n.t(`metrics.gloss.${k}` as never)}
+        >
           <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">
             {getMetricLabel(k)}
           </p>

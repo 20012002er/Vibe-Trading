@@ -1,3 +1,4 @@
+import i18n from "@/i18n";
 import { localizeToolName, TOOL_LABELS } from "../tools";
 
 describe("TOOL_LABELS", () => {
@@ -29,19 +30,21 @@ describe("TOOL_LABELS", () => {
 });
 
 describe("localizeToolName", () => {
-  it("returns label for known tools", () => {
-    expect(localizeToolName("backtest")).toBe("Run backtest");
+  it("resolves the tools.<name> i18n key", () => {
+    i18n.addResource("en", "translation", "tools.localized_test_tool", "Localized tool");
+
+    expect(localizeToolName("localized_test_tool")).toBe("Localized tool");
   });
 
   it("returns fallback for unknown tools when fallback provided", () => {
     expect(localizeToolName("unknown_tool", "My Fallback")).toBe("My Fallback");
   });
 
-  it("returns raw tool name for unknown tools with no fallback", () => {
-    expect(localizeToolName("some_new_tool")).toBe("some_new_tool");
+  it("humanizes unknown tools with no fallback", () => {
+    expect(localizeToolName("some_new_tool")).toBe("Some new tool");
   });
 
-  it("prefers TOOL_LABELS over fallback", () => {
+  it("uses TOOL_LABELS as the default before an explicit fallback", () => {
     expect(localizeToolName("bash", "ignored")).toBe("Run command");
   });
 });

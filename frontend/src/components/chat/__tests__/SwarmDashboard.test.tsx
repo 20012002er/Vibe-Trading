@@ -51,6 +51,10 @@ describe("SwarmDashboard", () => {
 
     expect(html).toContain('data-agent-layout="wide"');
     expect(html).toContain('data-agent-layout="narrow"');
+    expect(html).toContain("hidden min-w-0 md:block");
+    expect(html).toContain("space-y-2 md:hidden");
+    expect(html).not.toContain("hidden min-w-0 sm:block");
+    expect(html).not.toContain("space-y-2 sm:hidden");
     expect(html).toContain(
       "grid-cols-[minmax(0,1.25fr)_minmax(0,0.85fr)_minmax(0,1fr)_minmax(0,0.55fr)_minmax(0,1.5fr)]",
     );

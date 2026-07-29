@@ -283,7 +283,18 @@ export function isVisibleRuntimeConnector(broker: LiveBrokerStatus): boolean {
 
 export const RunnerStatus = memo(function RunnerStatus({ status, unavailable, halted, onRefresh }: Props) {
   const [open, setOpen] = useState(false);
+  const [, setVisibilityRefresh] = useState(0);
   const visibleBrokers = status?.brokers.filter(isVisibleRuntimeConnector) ?? [];
+
+  useEffect(() => {
+    const refreshOnTabRestore = () => {
+      if (document.visibilityState !== "visible") return;
+      setVisibilityRefresh(Date.now());
+      onRefresh();
+    };
+    document.addEventListener("visibilitychange", refreshOnTabRestore);
+    return () => document.removeEventListener("visibilitychange", refreshOnTabRestore);
+  }, [onRefresh]);
 
   if (unavailable) return null;
   if (!status || visibleBrokers.length === 0) return null;
