@@ -16,6 +16,7 @@ describe("agent store — initial state", () => {
     expect(s.streamingText).toBe("");
     expect(s.streamingSessionId).toBeNull();
     expect(s.toolCalls).toEqual([]);
+    expect(s.activity).toBeNull();
     expect(s.swarmRuns).toEqual({});
     expect(s.sseStatus).toBe("disconnected");
     expect(s.sseRetryAttempt).toBe(0);
@@ -203,6 +204,66 @@ describe("tool calls", () => {
       "error",
     ]);
   });
+
+  it("live-updates one activity object from thinking through tool work", () => {
+    const store = useAgentStore.getState();
+    store.startActivity("attempt-1", 1000);
+    expect(useAgentStore.getState().activity).toMatchObject({
+      attemptId: "attempt-1",
+      state: "thinking",
+      verb: "working",
+      steps: [],
+      startedAt: 1000,
+    });
+
+    store.addToolCall(makeToolCall({
+      id: "market-1",
+      tool: "get_market_data",
+      timestamp: 1100,
+    }));
+    expect(useAgentStore.getState().activity).toMatchObject({
+      state: "working",
+      verb: "readingMarketData",
+      steps: [{ id: "market-1", status: "running" }],
+    });
+
+    store.updateToolCall("market-1", { status: "ok", elapsed_ms: 500 });
+    expect(useAgentStore.getState().activity?.steps[0]).toMatchObject({
+      status: "ok",
+      elapsed_ms: 500,
+    });
+  });
+
+  it("derives strategy, backtest, validation and fallback verbs", () => {
+    const store = useAgentStore.getState();
+    store.startActivity("attempt-map", 1000);
+    const tools = [
+      ["write_file", "writingStrategy"],
+      ["run_backtest", "runningBacktest"],
+      ["walk_forward_validation", "validatingNumbers"],
+      ["run_swarm", "working"],
+    ] as const;
+
+    for (const [tool, verb] of tools) {
+      store.addToolCall(makeToolCall({ id: tool, tool }));
+      expect(useAgentStore.getState().activity?.verb).toBe(verb);
+    }
+  });
+
+  it("freezes terminal activity timing and can replace a pending attempt id", () => {
+    const store = useAgentStore.getState();
+    store.startActivity("pending-1", 1000);
+    store.setActivityAttemptId("attempt-final");
+    store.setActivityState("responding", 1500);
+    store.setActivityState("stopped", 4000);
+
+    expect(useAgentStore.getState().activity).toMatchObject({
+      attemptId: "attempt-final",
+      state: "stopped",
+      startedAt: 1000,
+      endedAt: 4000,
+    });
+  });
 });
 
 describe("swarm status ordering", () => {
@@ -326,6 +387,7 @@ describe("switchSession", () => {
     expect(s.sessionId).toBe("new-sess");
     expect(s.messages).toEqual([]);
     expect(s.toolCalls).toEqual([]);
+    expect(s.activity).toBeNull();
     expect(s.swarmRuns).toEqual({});
     expect(s.streamingText).toBe("");
     expect(s.status).toBe("idle");
@@ -373,6 +435,7 @@ describe("reset", () => {
     expect(s.sessionId).toBeNull();
     expect(s.streamingText).toBe("");
     expect(s.toolCalls).toEqual([]);
+    expect(s.activity).toBeNull();
     expect(s.swarmRuns).toEqual({});
     expect(s.status).toBe("idle");
     expect(s.streamingSessionId).toBeNull();

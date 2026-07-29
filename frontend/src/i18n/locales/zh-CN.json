@@ -450,7 +450,27 @@
     "goalModeChip": "研究目标",
     "continueGoalMessage": "继续研究目标：{{goal}}",
     "loadEarlier": "加载更早的消息",
-    "authRequired": "远程 API 访问需要 API 密钥。请在设置中添加密钥，或在 localhost 上运行后端以仅限本地使用。"
+    "authRequired": "远程 API 访问需要 API 密钥。请在设置中添加密钥，或在 localhost 上运行后端以仅限本地使用。",
+    "followUpPlaceholder": "追问本次运行——例如，为什么回撤这么深？",
+    "continuePrompt": "从刚才停止的地方继续。",
+    "doneMarker": "运行完成",
+    "backgroundRunComplete": "另一个会话中的运行已完成。",
+    "activity": {
+      "verbs": {
+        "readingMarketData": "正在读取市场数据",
+        "writingStrategy": "正在编写策略",
+        "runningBacktest": "正在运行回测",
+        "validatingNumbers": "正在复核数据",
+        "working": "正在处理"
+      },
+      "done": "完成",
+      "stopped": "已由你停止",
+      "timeout": "等待 {{elapsed}} 后已停止——运行可能仍在后台完成",
+      "failed": "失败",
+      "steps": "{{count}} 个步骤",
+      "continue": "继续",
+      "reattach": "重新连接"
+    }
   },
   "runDetail": {
     "title": "运行详情",
@@ -500,7 +520,9 @@
     "noValidationPayload": "暂无验证数据记录。",
     "noArtifactChecksums": "暂无制品校验和记录。",
     "noCodeFiles": "暂无代码文件。",
-    "fullReport": "完整报告 →"
+    "fullReport": "完整报告 →",
+    "unknown": "未知",
+    "noneRecorded": "未记录"
   },
   "compare": {
     "title": "策略对比",
@@ -680,7 +702,16 @@
       "icMean": "IC 均值",
       "icPositiveRatio": "IC > 0 期占比",
       "icCount": "样本数量"
-    }
+    },
+    "failedToLoadAlphas": "加载 Alpha 列表失败",
+    "selectAlphaForCompare": "选择 {{id}} 用于对比",
+    "failedToLoadAlpha": "加载 Alpha 失败",
+    "failedToStartBench": "启动基准测试失败",
+    "singleAssetHint": "{{message}} 请尝试使用 `sp500` 或 `csi300`，以获得有意义的横截面 IC。",
+    "benchStreamError": "基准测试数据流错误",
+    "job": "任务 {{id}}…",
+    "compareStreamError": "对比数据流错误",
+    "failedToStartComparison": "启动对比失败"
   },
   "validation": {
     "noData": "暂无验证数据。",

@@ -1,7 +1,6 @@
-import { memo, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { memo, useEffect, useMemo, useRef, type JSX } from "react";
 import { useTranslation } from "react-i18next";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { ProgressBar } from "@/components/chat/ProgressBar";
 import { localizeToolName } from "@/lib/tools";
 import type { ToolCallEntry } from "@/types/agent";
@@ -34,6 +33,12 @@ function calculateEta(tc: ToolCallEntry, previous?: EtaSample): number | null {
   const eta = (tc.elapsed_s / progress.current) * (progress.total - progress.current);
   if (!isFinite(eta) || eta < 0) return null;
   return Math.round(eta);
+}
+
+function formatStepElapsed(seconds: number): string {
+  const wholeSeconds = Math.max(0, Math.floor(seconds));
+  if (wholeSeconds < 60) return `${wholeSeconds}s`;
+  return `${Math.floor(wholeSeconds / 60)}m ${wholeSeconds % 60}s`;
 }
 
 /* ---------- Determinate progress ring ---------- */
@@ -92,6 +97,9 @@ function ToolRow({ entry, stepIndex, connector = "none", eta }: RowProps): JSX.E
   const hasDeterminate = !!(progress && typeof progress.current === "number" && typeof progress.total === "number" && progress.total > 0);
   const stage = progress?.stage || "";
   const message = progress?.message || "";
+  const elapsedSeconds = entry.elapsed_s ?? (
+    entry.elapsed_ms != null ? entry.elapsed_ms / 1000 : undefined
+  );
 
   const icon = entry.status === "error"
     ? <XCircle className="h-3 w-3 text-danger shrink-0" />
@@ -115,12 +123,12 @@ function ToolRow({ entry, stepIndex, connector = "none", eta }: RowProps): JSX.E
         )}
         {icon}
         <span className="text-foreground truncate">{stepLabel}</span>
-        {entry.elapsed_s != null && (
+        {elapsedSeconds != null && (
           <span
             aria-hidden="true"
             className="ml-auto sm:ml-0 tabular-nums text-[10px] text-muted-foreground/70 shrink-0"
           >
-            {entry.elapsed_s.toFixed(0)}s
+            {formatStepElapsed(elapsedSeconds)}
           </span>
         )}
       </div>
@@ -161,53 +169,46 @@ function ToolRow({ entry, stepIndex, connector = "none", eta }: RowProps): JSX.E
 }
 
 /* ---------- Public component ---------- */
-interface Props {
-  /** Full toolCalls slice from the store for the current attempt. */
+export interface ToolProgressIndicatorProps {
+  /** Full step list from the durable activity object. */
   toolCalls: ToolCallEntry[];
 }
-
-const MAX_VISIBLE = 3;
-const COLLAPSED_ROW_COUNT = MAX_VISIBLE - 1;
 
 interface IndexedToolCall {
   entry: ToolCallEntry;
   index: number;
 }
 
+/**
+ * Expanded activity step rows.
+ *
+ * ActivityLine owns status, disclosure and announcements; this component is
+ * deliberately only the shared row renderer so the chat has one status surface.
+ */
 export const ToolProgressIndicator = memo(function ToolProgressIndicator({
   toolCalls,
-}: Props): JSX.Element | null {
-  const { t } = useTranslation();
-  const [showEarlier, setShowEarlier] = useState(false);
+}: ToolProgressIndicatorProps): JSX.Element | null {
   const etaSamplesRef = useRef<Map<string, EtaSample>>(new Map());
 
-  const { indexedRows, running, anyError, collapsedRows } = useMemo(() => {
-    const indexedRows: IndexedToolCall[] = [];
+  const { rows, running } = useMemo(() => {
     const runningRows: IndexedToolCall[] = [];
     const terminalRows: IndexedToolCall[] = [];
     const running: ToolCallEntry[] = [];
-    let anyError = false;
 
     toolCalls.forEach((entry, index) => {
       const indexed = { entry, index };
-      indexedRows.push(indexed);
       if (entry.status === "running") {
         running.push(entry);
         runningRows.push(indexed);
       } else {
         terminalRows.push(indexed);
       }
-      if (entry.status === "error") anyError = true;
     });
 
-    const collapsedRows = toolCalls.length <= MAX_VISIBLE
-      ? indexedRows
-      : [
-          ...runningRows.slice(-COLLAPSED_ROW_COUNT),
-          ...terminalRows.reverse(),
-        ].slice(0, COLLAPSED_ROW_COUNT);
-
-    return { indexedRows, running, anyError, collapsedRows };
+    return {
+      running,
+      rows: [...runningRows, ...terminalRows.reverse()],
+    };
   }, [toolCalls]);
 
   const etaById = useMemo(() => {
@@ -244,75 +245,17 @@ export const ToolProgressIndicator = memo(function ToolProgressIndicator({
 
   if (toolCalls.length === 0) return null;
 
-  const totalSoFar = toolCalls.length;
-  const rows = showEarlier ? indexedRows : collapsedRows;
-  const overflow = showEarlier ? 0 : toolCalls.length - rows.length;
-  const coarseStatus = running.length > 0
-    ? t("toolProgress.toolsRunning" as never, { count: running.length })
-    : t("toolProgress.toolsCompleted" as never, { count: toolCalls.length });
-
-  /* ---------- aggregate icon state for the header row ---------- */
-  const aggregateIcon = anyError
-    ? <XCircle className="h-3 w-3 text-danger shrink-0" />
-    : running.length > 0
-      ? <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />
-      : <CheckCircle2 className="h-3 w-3 text-success shrink-0" />;
-
-  /* ---------- render ---------- */
-  if (toolCalls.length === 1) {
-    const only = toolCalls[0];
-    return (
-      <div className="min-w-0">
-        <span className="sr-only" role="status" aria-live="polite">
-          {coarseStatus}
-        </span>
-        <ToolRow
-          entry={only}
-          stepIndex={totalSoFar}
-          eta={etaById.get(only.id) ?? null}
-        />
-      </div>
-    );
-  }
-
-  // 2+ calls — header + indented rows.
   return (
-    <div className={cn("min-w-0 space-y-1")}>
-      <span className="sr-only" role="status" aria-live="polite">
-        {coarseStatus}
-      </span>
-      {/* Header row */}
-      <div
-        aria-hidden="true"
-        className="flex items-center gap-2 text-xs text-muted-foreground"
-      >
-        {aggregateIcon}
-        <span className="text-foreground">{coarseStatus}</span>
-      </div>
-      {/* Indented rows */}
-      <div className="pl-4 space-y-1">
-        {rows.map(({ entry, index }, i) => (
-          <ToolRow
-            key={entry.id}
-            entry={entry}
-            stepIndex={index + 1}
-            connector={i === rows.length - 1 && overflow === 0 ? "end" : "branch"}
-            eta={etaById.get(entry.id) ?? null}
-          />
-        ))}
-        {overflow > 0 && (
-          <div className="flex items-center gap-2 text-[10px] text-muted-foreground/60">
-            <span className="text-border/60 shrink-0 w-3 text-center" aria-hidden="true">└</span>
-            <button
-              type="button"
-              className="rounded-sm hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => setShowEarlier(true)}
-            >
-              {t("toolProgress.earlier" as never, { count: overflow })}
-            </button>
-          </div>
-        )}
-      </div>
+    <div className="min-w-0 space-y-1">
+      {rows.map(({ entry, index }, rowIndex) => (
+        <ToolRow
+          key={entry.id}
+          entry={entry}
+          stepIndex={index + 1}
+          connector={rowIndex === rows.length - 1 ? "end" : "branch"}
+          eta={etaById.get(entry.id) ?? null}
+        />
+      ))}
     </div>
   );
 });

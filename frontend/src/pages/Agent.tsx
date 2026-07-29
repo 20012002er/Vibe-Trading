@@ -1,15 +1,16 @@
 import { useTranslation } from 'react-i18next';
-import { useEffect, useRef, useState, useMemo, useCallback, type FormEvent } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useSearchParams } from "react-router";
-import { Send, Loader2, ArrowDown, Square, Download, Plus, Paperclip, X, Users, Target, ChevronDown, Pencil, Check, Play, OctagonX, Activity, Ban, CheckCircle2, Landmark } from "lucide-react";
+import { ArrowDown } from "lucide-react";
 import { toast } from "sonner";
 import {
   useAgentStore,
+  type AgentActivity,
   type AgentMessageMeta,
   type StoredAgentMessage,
 } from "@/stores/agent";
 import { useSSE } from "@/hooks/useSSE";
-import { ApiError, AUTH_REQUIRED_MESSAGE, api, isAuthRequiredError, type GoalSnapshot, type MandateProposal, type MandateCommitted, type LiveAction, type LiveHalted, type LiveStatus } from "@/lib/api";
+import { ApiError, AUTH_REQUIRED_MESSAGE, api, isAuthRequiredError, type GoalSnapshot, type MandateProposal, type MandateCommitted, type LiveAction, type LiveHalted } from "@/lib/api";
 import { isReportWorthyRun } from "@/lib/runReports";
 import type { AgentMessage, SwarmRunStatus, ToolCallEntry } from "@/types/agent";
 import { AgentAvatar } from "@/components/chat/AgentAvatar";
@@ -17,10 +18,20 @@ import { WelcomeScreen } from "@/components/chat/WelcomeScreen";
 import { MarkdownContent, MessageBubble } from "@/components/chat/MessageBubble";
 import { ThinkingTimeline } from "@/components/chat/ThinkingTimeline";
 import { ConversationTimeline } from "@/components/chat/ConversationTimeline";
-import { ToolProgressIndicator } from "@/components/chat/ToolProgressIndicator";
+import { ActivityLine } from "@/components/chat/ActivityLine";
 import { MandateProposalCard } from "@/components/chat/MandateProposalCard";
-import { RunnerStatus } from "@/components/chat/RunnerStatus";
 import { SwarmStatusCard } from "@/components/chat/SwarmStatusCard";
+import {
+  Composer,
+  type ComposerAttachment,
+  type ComposerHandle,
+} from "@/components/chat/Composer";
+import { GoalPanel } from "@/components/chat/GoalPanel";
+import {
+  LiveActionChip,
+  LiveRuntimePanel,
+  type LiveRuntimePanelHandle,
+} from "@/components/chat/LiveRuntimePanel";
 import {
   applySwarmEvent,
   buildSwarmStatusFromStarted,
@@ -78,14 +89,8 @@ function toolProgressKey(callId: string | undefined, tool: string): string {
 // i18n hook for Agent component — used inside the component below
 // (declared at module scope for helper usage is fine since t() reads from i18n singleton)
 
-/** Poll cadence for the shared `GET /live/status` snapshot. */
-const LIVE_STATUS_POLL_INTERVAL_MS = 15_000;
 const STREAM_FLUSH_INTERVAL_MS = 80;
 const TIMELINE_WINDOW_SIZE = 160;
-const CONNECTOR_CHECK_PROMPT =
-  "List my trading connector profiles, show which one is selected, then check that selected connector. If it is not ready, tell me exactly what setup step is missing. Do not place or modify orders.";
-const CONNECTOR_PORTFOLIO_PROMPT =
-  "Use the selected trading connector profile to summarize my account, positions, concentration, cash, and portfolio risk. Do not place or modify orders.";
 const SWARM_PROMPT_PREFIX =
   "[Swarm Team Mode] Use the swarm tool to assemble the best specialist team for this task. Auto-select the most appropriate preset.\n\n";
 const GOAL_KICKOFF_PREFIX = [
@@ -148,6 +153,7 @@ interface ProposalItem {
   kind: "proposal";
   timestamp: number;
   proposal: MandateProposal;
+  committed: MandateCommitted | null;
 }
 interface LiveActionItem {
   kind: "live_action";
@@ -156,102 +162,12 @@ interface LiveActionItem {
 }
 type LiveItem = ProposalItem | LiveActionItem;
 
-function normalizeBrokerScope(broker: string | null | undefined): string | null {
-  const normalized = broker?.trim().toLowerCase();
-  return normalized || null;
-}
-
-function isGlobalLiveHalt(halt: LiveHalted | null): boolean {
-  return halt != null && normalizeBrokerScope(halt.broker) == null;
-}
-
-function haltScopeStillActive(halt: LiveHalted, status: LiveStatus): boolean {
-  const broker = normalizeBrokerScope(halt.broker);
-  if (!broker) return status.global_halted;
-  return status.global_halted || status.brokers.some((item) => (
-    normalizeBrokerScope(item.auth.broker) === broker && item.halted
-  ));
-}
-
-function liveActionStyle(kind: string): { icon: typeof Activity; tone: string } {
-  switch (kind) {
-    case "order_rejected":
-    case "breach":
-      return { icon: Ban, tone: "border-amber-500/40 bg-amber-500/5 text-amber-600 dark:text-amber-400" };
-    case "halt_tripped":
-      return { icon: OctagonX, tone: "border-destructive/40 bg-destructive/5 text-destructive" };
-    case "mandate_committed":
-    case "halt_cleared":
-      return { icon: CheckCircle2, tone: "border-emerald-500/40 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400" };
-    default:
-      return { icon: Activity, tone: "border-sky-500/40 bg-sky-500/5 text-sky-600 dark:text-sky-400" };
-  }
-}
-
-function liveActionLabel(action: LiveAction): string {
-  return action.kind.replace(/_/g, " ");
-}
-
-function LiveActionChip({ action }: { action: LiveAction }) {
-  const { t } = useTranslation();
-  const { icon: Icon, tone } = liveActionStyle(action.kind);
-  return (
-    <div className="flex gap-3">
-      <AgentAvatar />
-      <div className="flex-1 min-w-0">
-        <div className={["inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs", tone].join(" ")}>
-          <Icon className="h-3 w-3 shrink-0" />
-          <span className="shrink-0 font-medium uppercase tracking-wide text-[10px]">{t("agent.runtimeBadge")}</span>
-          <span className="shrink-0 font-medium">{liveActionLabel(action)}</span>
-          {action.intent_normalized && (
-            <span className="truncate text-foreground/80">· {action.intent_normalized}</span>
-          )}
-          {action.outcome && (
-            <span className="shrink-0 font-mono text-[10px] text-muted-foreground">· {action.outcome}</span>
-          )}
-          {action.remote_tool && (
-            <span className="shrink-0 font-mono text-[10px] text-muted-foreground">· {action.remote_tool}</span>
-          )}
-          {action.error && <span className="truncate text-destructive">· {action.error}</span>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function isCriterionStatusMet(status: string): boolean {
   return !["", "pending", "open", "unsatisfied"].includes(status.toLowerCase());
 }
 
-function getGoalProgress(snapshot: GoalSnapshot | null): {
-  met: number;
-  total: number;
-  label: string;
-  metLabel: string;
-  evidenceTotal: number;
-} {
-  const total = snapshot?.criteria.length ?? 0;
-  const met = snapshot?.criteria.filter((item) => criterionCovered(snapshot, item)).length ?? 0;
-  const evidenceTotal = snapshot?.evidence_count ?? 0;
-  return {
-    met,
-    total,
-    label: total > 0 ? `${met}/${total}` : "",
-    metLabel: total > 0 ? `${met}/${total} met` : "",
-    evidenceTotal,
-  };
-}
-
-function statusLabel(status: string): string {
-  return status.replace(/_/g, " ");
-}
-
 function isTerminalGoalStatus(status: string): boolean {
   return ["complete", "cancelled", "blocked", "superseded", "usage_limited"].includes(status);
-}
-
-function criterionIndexLabel(index: number): string {
-  return String(index + 1);
 }
 
 function criterionEvidenceCount(snapshot: GoalSnapshot, criterionId: string): number {
@@ -260,12 +176,6 @@ function criterionEvidenceCount(snapshot: GoalSnapshot, criterionId: string): nu
 
 function criterionCovered(snapshot: GoalSnapshot, criterion: GoalSnapshot["criteria"][number]): boolean {
   return isCriterionStatusMet(criterion.status) || criterionEvidenceCount(snapshot, criterion.criterion_id) > 0;
-}
-
-function latestGoalEvidence(snapshot: GoalSnapshot) {
-  return [...snapshot.evidence]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(0, 2);
 }
 
 function goalKickoffPrompt(objective: string): string {
@@ -289,12 +199,11 @@ function goalContinuePrompt(snapshot: GoalSnapshot): string {
 /* ---------- Component ---------- */
 export function Agent() {
   const { t } = useTranslation();
-  const [input, setInput] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
   const listRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const isComposingRef = useRef(false);
-  const lastCompositionEndRef = useRef(0);
+  const composerRef = useRef<ComposerHandle>(null);
+  const liveRuntimeRef = useRef<LiveRuntimePanelHandle>(null);
+  const goalOpenRequestRef = useRef(0);
   const sseSessionRef = useRef<string | null>(null);
   const prevSseStatusRef = useRef<string>("disconnected");
   const genRef = useRef(0);
@@ -316,44 +225,23 @@ export function Agent() {
   const replayCheckTimerRef = useRef(0);
   const smoothScrollingRef = useRef(false);
   const smoothScrollTimerRef = useRef(0);
+  const titleBeforeCompletionRef = useRef<string | null>(null);
+  const completedAttemptIdsRef = useRef<Set<string>>(new Set());
 
-  const [attachment, setAttachment] = useState<{ filename: string; filePath: string } | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [showUploadMenu, setShowUploadMenu] = useState(false);
-  const uploadMenuRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [swarmPreset, setSwarmPreset] = useState<{ name: string; title: string } | null>(null);
   const [goalComposerActive, setGoalComposerActive] = useState(false);
-  const [goalDetailsOpen, setGoalDetailsOpen] = useState(false);
   const [goalSnapshot, setGoalSnapshot] = useState<GoalSnapshot | null>(null);
-  const [goalEditActive, setGoalEditActive] = useState(false);
-  const [goalEditValue, setGoalEditValue] = useState("");
 
   /* Connector runtime channel state (SPEC Consent §1/§4/§5) */
   const [liveItems, setLiveItems] = useState<LiveItem[]>([]);
-  const [committedMandates, setCommittedMandates] = useState<Record<string, MandateCommitted>>({});
-  const [liveHalted, setLiveHalted] = useState<LiveHalted | null>(null);
-  const [halting, setHalting] = useState(false);
-  /* Bumped to force an immediate live-status re-poll on a live event
-   * (commit / halt / resume / runner-affecting action) rather than waiting a tick. */
-  const [liveStatusRefresh, setLiveStatusRefresh] = useState(0);
-  /* Shared `GET /live/status` snapshot. Owned here (single poller) and passed down
-   * to RunnerStatus, so the global kill switch can be shown whenever connector runtime
-   * could be active out-of-band (CLI/another session), not only off in-session SSE
-   * items (audit M2: always-available global halt — SPEC Consent §4). */
-  const [liveStatus, setLiveStatus] = useState<LiveStatus | null>(null);
-  const [reasoningActive, setReasoningActive] = useState(false);
   const [visibleRowCount, setVisibleRowCount] = useState(TIMELINE_WINDOW_SIZE);
   const visibleRowsSessionRef = useRef<string | null>(null);
-  /* The status endpoint is not wired on every backend; a 404/501 hides the panel
-   * and removes status from the kill-switch visibility condition. */
-  const [liveStatusUnavailable, setLiveStatusUnavailable] = useState(false);
 
   const messages = useAgentStore(s => s.messages);
   const streamingText = useAgentStore(s => s.streamingText);
   const status = useAgentStore(s => s.status);
   const sessionId = useAgentStore(s => s.sessionId);
-  const toolCalls = useAgentStore(s => s.toolCalls);
+  const activity = useAgentStore(s => s.activity);
   const swarmRuns = useAgentStore(s => s.swarmRuns);
   const sessionLoading = useAgentStore(s => s.sessionLoading);
   const previousStatusRef = useRef(status);
@@ -411,7 +299,6 @@ export function Agent() {
     const pendingReasoning = pendingReasoningRef.current;
     pendingTextRef.current = "";
     pendingReasoningRef.current = null;
-    if (pendingReasoning !== null) setReasoningActive(pendingReasoning);
     if (pendingText) act().appendDelta(pendingText);
     if (pendingText || pendingReasoning !== null) scrollToBottom();
     return pendingText;
@@ -436,24 +323,81 @@ export function Agent() {
 
   const clearStreamingView = useCallback(() => {
     cancelPendingStreamFlush();
-    setReasoningActive(false);
     act().clearStreaming();
   }, [cancelPendingStreamFlush]);
 
-  const resetComposerInput = useCallback(() => {
-    setInput("");
-    if (inputRef.current) inputRef.current.style.height = "auto";
+  const archiveActivity = useCallback((
+    terminalState: "stopped" | "timeout" | "failed" | "done",
+    endedAt = Date.now(),
+  ): AgentActivity | null => {
+    const store = act();
+    store.setActivityState(terminalState, endedAt);
+    const finished = act().activity;
+    if (!finished) return null;
+    const [activityMessage] = buildToolTimelineMessages(finished.steps, {
+      activity: finished,
+      idPrefix: "live_",
+    });
+    useAgentStore.setState((state) => ({
+      messages: [
+        ...state.messages.filter(
+          (message) => message.meta?.activity?.attemptId !== finished.attemptId,
+        ),
+        activityMessage,
+      ],
+      activity: null,
+      toolCalls: [],
+    }));
+    return finished;
+  }, []);
+
+  const persistPartialAnswer = useCallback((
+    attempt: AgentActivity | null,
+    content: string,
+  ) => {
+    if (!attempt || !content.trim()) return;
+    act().addMessage({
+      id: `partial_${attempt.attemptId}`,
+      type: "answer",
+      content,
+      meta: { partialAttemptId: attempt.attemptId },
+      timestamp: Date.now(),
+    });
+  }, []);
+
+  const markBackgroundCompletion = useCallback((
+    completedSessionId: string,
+    attemptId?: string,
+  ) => {
+    if (attemptId && completedAttemptIdsRef.current.has(attemptId)) return;
+    if (attemptId) completedAttemptIdsRef.current.add(attemptId);
+    if (document.hidden) {
+      titleBeforeCompletionRef.current ??= document.title;
+      document.title = `● ${t("agent.doneMarker" as never)}`;
+    }
+    if (act().sessionId !== completedSessionId) {
+      toast.success(t("agent.backgroundRunComplete" as never));
+    }
+  }, [t]);
+
+  useEffect(() => {
+    const restoreTitle = () => {
+      if (document.hidden || titleBeforeCompletionRef.current === null) return;
+      document.title = titleBeforeCompletionRef.current;
+      titleBeforeCompletionRef.current = null;
+    };
+    document.addEventListener("visibilitychange", restoreTitle);
+    return () => {
+      document.removeEventListener("visibilitychange", restoreTitle);
+      if (titleBeforeCompletionRef.current !== null) {
+        document.title = titleBeforeCompletionRef.current;
+        titleBeforeCompletionRef.current = null;
+      }
+    };
   }, []);
 
   const fillComposer = useCallback((prompt: string) => {
-    setInput(prompt);
-    requestAnimationFrame(() => {
-      const composer = inputRef.current;
-      if (!composer) return;
-      composer.focus({ preventScroll: true });
-      composer.style.height = "auto";
-      composer.style.height = `${composer.scrollHeight}px`;
-    });
+    composerRef.current?.fill(prompt);
   }, []);
 
   useEffect(() => {
@@ -467,12 +411,11 @@ export function Agent() {
         if (
           active &&
           active !== document.body &&
-          active !== inputRef.current &&
           !active.closest("[data-agent-composer]")
         ) {
           return;
         }
-        inputRef.current?.focus({ preventScroll: true });
+        composerRef.current?.focus();
       });
     }
   }, [status]);
@@ -522,10 +465,9 @@ export function Agent() {
 
   const loadGoalSnapshot = useCallback(async (sid?: string | null) => {
     const targetSession = sid || act().sessionId;
+    goalOpenRequestRef.current = 0;
     if (!targetSession) {
       setGoalSnapshot(null);
-      setGoalDetailsOpen(false);
-      setGoalEditActive(false);
       return;
     }
     try {
@@ -536,8 +478,6 @@ export function Agent() {
       if (act().sessionId !== targetSession) return;
       if (error instanceof ApiError && error.status === 404) {
         setGoalSnapshot(null);
-        setGoalDetailsOpen(false);
-        setGoalEditActive(false);
       } else {
         toast.error(error instanceof Error ? error.message : t('agent.failedToLoadGoal'));
       }
@@ -558,6 +498,9 @@ export function Agent() {
           ? buildToolTimelineMessages(m.tool_trail ?? [], {
               fallbackTimestamp: ts,
               idPrefix: `${m.message_id}_`,
+              attemptId: m.linked_attempt_id || `${m.message_id}_attempt`,
+              state: meta?.status === "failed" ? "failed" : "done",
+              endedAt: ts,
             })
           : [];
         agentMsgs.push(...toolTimeline);
@@ -639,10 +582,12 @@ export function Agent() {
           (message) => message.role === "assistant" && message.linked_attempt_id === attemptId,
           );
         if (completed) {
+          act().clearStreamingSession(sid);
+          markBackgroundCompletion(sid, attemptId);
           if (act().sessionId !== sid) return true;
           clearStreamingView();
           act().setStatus("idle");
-          useAgentStore.setState({ toolCalls: [] });
+          useAgentStore.setState({ toolCalls: [], activity: null });
           await refreshSessionMessages(sid);
           return true;
         }
@@ -652,7 +597,7 @@ export function Agent() {
       await new Promise<void>((resolve) => window.setTimeout(resolve, 800));
     }
     return false;
-  }, [clearStreamingView, refreshSessionMessages]);
+  }, [clearStreamingView, markBackgroundCompletion, refreshSessionMessages]);
 
   const setupSSE = useCallback((sid: string) => {
     if (sseSessionRef.current === sid) return;
@@ -663,22 +608,52 @@ export function Agent() {
     sseSessionRef.current = sid;
 
     const touch = () => { lastEventRef.current = Date.now(); };
+    const identifyActivity = (
+      data: Record<string, unknown>,
+      state: "thinking" | "working" | "responding",
+    ): boolean => {
+      const store = act();
+      const attemptId = String(data.attempt_id || "");
+      if (attemptId && store.messages.some((message) => (
+        message.meta?.activity?.attemptId === attemptId
+        && ["stopped", "timeout"].includes(message.meta.activity.state)
+      ))) {
+        return false;
+      }
+      const current = store.activity;
+      if (!current) {
+        store.startActivity(attemptId || `pending-${Date.now()}`);
+      } else if (
+        attemptId &&
+        current.attemptId !== attemptId &&
+        current.attemptId.startsWith("pending-")
+      ) {
+        store.setActivityAttemptId(attemptId);
+      } else if (attemptId && current.attemptId !== attemptId) {
+        store.startActivity(attemptId);
+      }
+      act().setActivityState(state);
+      return true;
+    };
 
     connect(api.sseUrl(sid, { replay: "active" }), {
       text_delta: (d) => {
         touch();
         replayAttemptSeenRef.current = true;
+        if (!identifyActivity(d, "responding")) return;
         if (act().status !== "streaming") act().setStatus("streaming");
         queueStreamUpdate(String(d.delta || ""), false);
       },
-      reasoning_delta: () => {
+      reasoning_delta: (d) => {
         touch();
         replayAttemptSeenRef.current = true;
+        if (!identifyActivity(d, "thinking")) return;
         queueStreamUpdate("", true);
         if (act().status !== "streaming") act().setStatus("streaming");
       },
-      stream_reset: () => {
+      stream_reset: (d) => {
         touch();
+        if (!identifyActivity(d, "thinking")) return;
         clearStreamingView();
         if (act().status !== "streaming") act().setStatus("streaming");
         scrollToBottom();
@@ -688,6 +663,7 @@ export function Agent() {
       tool_call: (d) => {
         touch();
         replayAttemptSeenRef.current = true;
+        if (!identifyActivity(d, "working")) return;
         queueStreamUpdate("", false);
         const toolName = String(d.tool || "");
         const callId = eventCallId(d);
@@ -726,6 +702,7 @@ export function Agent() {
       tool_heartbeat: (d) => {
         touch();
         replayAttemptSeenRef.current = true;
+        if (!identifyActivity(d, "working")) return;
         // Keep streaming state alive during long-running tools (swarm, backtest)
         if (act().status !== "streaming") act().setStatus("streaming");
         const toolName = String(d.tool || "");
@@ -790,17 +767,19 @@ export function Agent() {
         scrollToBottom();
       },
 
-      "attempt.created": () => {
+      "attempt.created": (d) => {
         touch();
         replayAttemptSeenRef.current = true;
+        if (!identifyActivity(d, "thinking")) return;
         // Backend has created a new attempt — ensure streaming state is active
         // even if we connected mid-stream (SSE replay / page reload).
         if (act().status !== "streaming") act().setStatus("streaming");
       },
 
-      "attempt.started": () => {
+      "attempt.started": (d) => {
         touch();
         replayAttemptSeenRef.current = true;
+        if (!identifyActivity(d, "thinking")) return;
         // Backend has begun executing the attempt. Re-affirm streaming state
         // so the UI shows a working indicator for reconnects and fresh loads.
         if (act().status !== "streaming") act().setStatus("streaming");
@@ -808,19 +787,40 @@ export function Agent() {
 
       "attempt.completed": async (d) => {
         touch();
+        const attemptId = String(d.attempt_id || "");
+        markBackgroundCompletion(sid, attemptId);
+        if (act().sessionId !== sid) {
+          act().clearStreamingSession(sid);
+          return;
+        }
+        if (attemptId && act().messages.some(
+          (message) => (
+            message.meta?.activity?.attemptId === attemptId
+            && message.meta.activity.state === "done"
+          ),
+        )) {
+          clearStreamingView();
+          act().setStatus("idle");
+          return;
+        }
         const streamedAnswer = act().streamingText + pendingTextRef.current;
         flushPendingStreamUpdate();
-        setReasoningActive(false);
-        const s = act();
-        // Build ThinkingTimeline summary from accumulated toolCalls
-        const completedTools = s.toolCalls;
-        if (completedTools.length > 0) {
-          for (const message of buildToolTimelineMessages(completedTools)) {
-            s.addMessage(message);
-          }
+        if (!act().activity) {
+          act().startActivity(attemptId || `completed-${Date.now()}`);
+        } else if (attemptId && act().activity?.attemptId !== attemptId) {
+          act().setActivityAttemptId(attemptId);
         }
+        const s = act();
+        const completedTools = s.activity?.steps ?? s.toolCalls;
+        const completedActivity = archiveActivity("done");
+        const completedAttemptId = completedActivity?.attemptId || attemptId;
+        useAgentStore.setState((state) => ({
+          messages: state.messages.filter(
+            (message) => message.meta?.partialAttemptId !== completedAttemptId,
+          ),
+        }));
 
-        // Clear streaming text (don't create thinking message)
+        // Clear streaming text after freezing the durable activity summary.
         s.clearStreaming();
 
         // Add final answer
@@ -842,7 +842,6 @@ export function Agent() {
         // The transcript is already complete. Drop transient state before the
         // optional report fetch so answer/tool progress never overlap.
         s.setStatus("idle");
-        useAgentStore.setState({ toolCalls: [] });
         scrollToBottom();
 
         // Show RunCompleteCard when the turn produced backtest metrics or a shadow report
@@ -878,12 +877,39 @@ export function Agent() {
 
       "attempt.failed": (d) => {
         touch();
+        const attemptId = String(d.attempt_id || "");
+        if (act().sessionId !== sid) {
+          act().clearStreamingSession(sid);
+          return;
+        }
+        const archived = act().messages.find(
+          (message) => message.meta?.activity?.attemptId === attemptId,
+        )?.meta?.activity;
+        if (archived?.state === "stopped") {
+          act().setStatus("idle");
+          return;
+        }
+        if (!act().activity && archived) {
+          useAgentStore.setState((state) => ({
+            messages: state.messages.map((message) => (
+              message.meta?.activity?.attemptId === attemptId
+                ? {
+                    ...message,
+                    meta: {
+                      ...message.meta,
+                      activity: { ...archived, state: "failed", endedAt: Date.now() },
+                    },
+                  }
+                : message
+            )),
+          }));
+        } else {
+          if (!act().activity) act().startActivity(attemptId || `failed-${Date.now()}`);
+          archiveActivity("failed");
+        }
         clearStreamingView();
         act().addMessage({ id: "", type: "error", content: String(d.error || "Execution failed"), timestamp: Date.now() });
         act().setStatus("idle");
-        // Clear stale toolCalls so the next turn's running indicator doesn't
-        // briefly show the previous turn's progress before fresh events land.
-        useAgentStore.setState({ toolCalls: [] });
         scrollToBottom();
       },
 
@@ -940,8 +966,6 @@ export function Agent() {
         const goal = (d.goal as GoalSnapshot["goal"] | undefined) ?? snapshot?.goal;
         if (goal && isTerminalGoalStatus(goal.status)) {
           setGoalSnapshot(null);
-          setGoalDetailsOpen(false);
-          setGoalEditActive(false);
           return;
         }
         if (snapshot) {
@@ -955,7 +979,10 @@ export function Agent() {
         touch();
         const proposal = d as unknown as MandateProposal;
         if (!proposal.proposal_id || !Array.isArray(proposal.profiles)) return;
-        setLiveItems((items) => [...items, { kind: "proposal", timestamp: Date.now(), proposal }]);
+        setLiveItems((items) => [
+          ...items,
+          { kind: "proposal", timestamp: Date.now(), proposal, committed: null },
+        ]);
         scrollToBottom();
       },
 
@@ -963,9 +990,13 @@ export function Agent() {
         touch();
         const committed = d as unknown as MandateCommitted;
         if (!committed.proposal_id) return;
-        setCommittedMandates((prev) => ({ ...prev, [committed.proposal_id as string]: committed }));
+        setLiveItems((items) => items.map((item) => (
+          item.kind === "proposal" && item.proposal.proposal_id === committed.proposal_id
+            ? { ...item, committed }
+            : item
+        )));
         // A fresh mandate may bring up the runner; refresh the runtime panel now.
-        setLiveStatusRefresh((n) => n + 1);
+        liveRuntimeRef.current?.handleMandateCommitted();
         scrollToBottom();
       },
 
@@ -975,8 +1006,7 @@ export function Agent() {
         // Preemptive kill switch: the server has cancelled resting orders and may have
         // flattened positions (SPEC §7.5 #6). Reflect the halted state across surfaces;
         // the RunnerStatus panel re-polls so its per-broker rows show "halted".
-        setLiveHalted(halted);
-        setLiveStatusRefresh((n) => n + 1);
+        liveRuntimeRef.current?.handleHalted(halted);
         toast.warning(t('agent.connectorHalted'));
       },
 
@@ -985,8 +1015,7 @@ export function Agent() {
         // Kill switch cleared via a privileged surface action (SPEC Consent §4);
         // clear the halted banner and re-poll runtime status.
         void d;
-        setLiveHalted(null);
-        setLiveStatusRefresh((n) => n + 1);
+        liveRuntimeRef.current?.handleResumed();
         toast.success(t('agent.connectionRestored'));
       },
 
@@ -995,12 +1024,7 @@ export function Agent() {
         const action = d as unknown as LiveAction;
         if (!action.kind) return;
         setLiveItems((items) => [...items, { kind: "live_action", timestamp: Date.now(), action }]);
-        if (action.kind === "halt_tripped") setLiveHalted({ broker: action.broker, reason: action.intent_normalized });
-        if (action.kind === "halt_cleared") setLiveHalted(null);
-        // Mandate-affecting / runner-affecting actions should refresh the runtime panel.
-        if (["mandate_committed", "halt_tripped", "halt_cleared"].includes(action.kind)) {
-          setLiveStatusRefresh((n) => n + 1);
-        }
+        liveRuntimeRef.current?.handleLiveAction(action);
         scrollToBottom();
       },
 
@@ -1008,12 +1032,14 @@ export function Agent() {
       reconnect: (d) => { act().setSseStatus("reconnecting", Number(d.attempt ?? 0)); },
     });
   }, [
+    archiveActivity,
     cancelPendingStreamFlush,
     clearStreamingView,
     connect,
     disconnect,
     flushPendingStreamUpdate,
     loadGoalSnapshot,
+    markBackgroundCompletion,
     queueStreamUpdate,
     scrollToBottom,
   ]);
@@ -1027,9 +1053,7 @@ export function Agent() {
       doDisconnect();
       // Live-channel timeline items are per-session; clear on switch.
       setLiveItems([]);
-      setCommittedMandates({});
-      setLiveHalted(null);
-      setLiveStatusRefresh((n) => n + 1);
+      liveRuntimeRef.current?.resetSession();
       if (curSid && curMsgs.length > 0) cacheSession(curSid, curMsgs);
 
       // Atomic switch: cache hit = instant, cache miss = show loading skeleton
@@ -1061,50 +1085,15 @@ export function Agent() {
       genRef.current += 1;
       doDisconnect();
       setLiveItems([]);
-      setCommittedMandates({});
-      setLiveHalted(null);
-      setLiveStatusRefresh((n) => n + 1);
+      liveRuntimeRef.current?.resetSession();
       if (curSid && curMsgs.length > 0) cacheSession(curSid, curMsgs);
       reset();
     }
   }, [urlSessionId, doDisconnect, loadSessionMessages, setupSSE, forceScrollToBottom]);
 
-  /* Single shared poller for `GET /live/status`. RunnerStatus consumes this snapshot
-   * as a prop rather than polling independently, and the global kill switch reads it
-   * to stay available whenever connector runtime activity could be active out-of-band. */
-  const refreshLiveStatus = useCallback(async () => {
-    try {
-      const next = await api.getLiveStatus();
-      setLiveStatus(next);
-      setLiveHalted((current) => (
-        current && !haltScopeStillActive(current, next) ? null : current
-      ));
-      setLiveStatusUnavailable(false);
-    } catch (error) {
-      // A 404/501 means the runtime endpoint is not wired on this backend; treat the
-      // status source as unavailable. Any other failure keeps the last snapshot.
-      if (error instanceof ApiError && (error.status === 404 || error.status === 501)) {
-        setLiveStatus(null);
-        setLiveStatusUnavailable(true);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    refreshLiveStatus();
-    const timer = setInterval(refreshLiveStatus, LIVE_STATUS_POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [refreshLiveStatus]);
-
-  // Force an immediate re-poll when a live event bumps refreshKey (commit/halt/resume).
-  useEffect(() => {
-    if (liveStatusRefresh > 0) refreshLiveStatus();
-  }, [liveStatusRefresh, refreshLiveStatus]);
-
   useEffect(() => {
     if (!sessionId) {
       setGoalSnapshot(null);
-      setGoalDetailsOpen(false);
       return;
     }
     if (pendingGoalSessionRef.current === sessionId) {
@@ -1137,19 +1126,23 @@ export function Agent() {
     // Arm the clock at the start of every streaming turn. Without this, a turn
     // whose very first event never arrives (e.g. the LLM provider hangs before
     // emitting a single token) left lastEventRef at its 0 / stale value, so the
-    // guard below short-circuited and the UI hung on "Agent is working…"
+    // guard below short-circuited and the activity line stayed live forever.
     // forever. touch() refreshes this on every real event; the no-op heartbeat
     // deliberately does not, so a connection that only keep-alives still trips.
     lastEventRef.current = Date.now();
     const timer = setInterval(() => {
       if (lastEventRef.current && Date.now() - lastEventRef.current > sseTimeoutMsRef.current && act().status === "streaming") {
-        clearStreamingView();
+        flushPendingStreamUpdate();
+        const partialAnswer = act().streamingText;
+        const timedOutActivity = archiveActivity("timeout");
+        act().clearStreaming();
+        persistPartialAnswer(timedOutActivity, partialAnswer);
         act().setStatus("idle");
         toast.warning(t('agent.executionTimedOut'));
       }
     }, 10_000);
     return () => clearInterval(timer);
-  }, [clearStreamingView, status]);
+  }, [archiveActivity, flushPendingStreamUpdate, persistPartialAnswer, status, t]);
 
   const ensureGoalSession = useCallback(async (title: string): Promise<string> => {
     let sid = act().sessionId;
@@ -1163,19 +1156,20 @@ export function Agent() {
     return sid;
   }, [setSearchParams, setupSSE]);
 
-  const runPrompt = useCallback(async (prompt: string) => {
+  const runPrompt = useCallback(async (
+    prompt: string,
+    attachment: ComposerAttachment | null = null,
+  ) => {
     if (!prompt.trim() || status === "streaming") return;
     clearStreamingView();
 
     if (goalComposerActive) {
-      resetComposerInput();
-      inputRef.current?.focus();
       try {
         const sid = await ensureGoalSession(prompt);
         const snapshot = await api.createGoal(sid, { objective: prompt });
+        goalOpenRequestRef.current += 1;
         setGoalSnapshot(snapshot);
         setGoalComposerActive(false);
-        setGoalDetailsOpen(true);
         toast.success(t('agent.researchGoalAttached'));
         const kickoff = goalKickoffPrompt(prompt);
         act().addMessage({
@@ -1185,14 +1179,21 @@ export function Agent() {
           meta: { goalMode: true, requestText: kickoff },
           timestamp: Date.now(),
         });
+        act().startActivity(`pending-${Date.now()}`);
         act().setStatus("streaming");
         forceScrollToBottom();
         setupSSE(sid);
         const sent = await api.sendMessage(sid, kickoff);
+        if (act().activity?.attemptId.startsWith("pending-")) {
+          act().setActivityAttemptId(sent.attempt_id);
+        }
         void syncCompletedAttempt(sid, sent.attempt_id);
       } catch (error) {
+        if (act().activity) archiveActivity("failed");
         act().setStatus("idle");
-        toast.error(error instanceof Error ? error.message : t('agent.failedToStartGoal'));
+        const message = error instanceof Error ? error.message : t('agent.failedToStartGoal');
+        toast.error(message);
+        act().addMessage({ id: "", type: "error", content: message, timestamp: Date.now() });
       }
       return;
     }
@@ -1211,10 +1212,8 @@ export function Agent() {
     if (attachment) {
       messageMeta.attachment = { filename: attachment.filename };
       finalPrompt = `[Uploaded file: ${attachment.filename}, path: ${attachment.filePath}]\n\n${finalPrompt}`;
-      setAttachment(null);
     }
     messageMeta.requestText = finalPrompt;
-    resetComposerInput();
     act().addMessage({
       id: "",
       type: "user",
@@ -1222,9 +1221,9 @@ export function Agent() {
       meta: Object.keys(messageMeta).length > 0 ? messageMeta : undefined,
       timestamp: Date.now(),
     });
+    act().startActivity(`pending-${Date.now()}`);
     act().setStatus("streaming");
     forceScrollToBottom();
-    inputRef.current?.focus();
 
     try {
       let sid = act().sessionId;
@@ -1236,20 +1235,23 @@ export function Agent() {
       }
       setupSSE(sid);
       const sent = await api.sendMessage(sid, finalPrompt);
+      if (act().activity?.attemptId.startsWith("pending-")) {
+        act().setActivityAttemptId(sent.attempt_id);
+      }
       void syncCompletedAttempt(sid, sent.attempt_id);
     } catch (error) {
+      archiveActivity("failed");
       act().setStatus("error");
       const message = isAuthRequiredError(error) ? AUTH_REQUIRED_MESSAGE : t('agent.failedToSend');
       toast.error(message);
       act().addMessage({ id: "", type: "error", content: message, timestamp: Date.now() });
     }
   }, [
-    attachment,
+    archiveActivity,
     clearStreamingView,
     ensureGoalSession,
     forceScrollToBottom,
     goalComposerActive,
-    resetComposerInput,
     setSearchParams,
     setupSSE,
     status,
@@ -1258,87 +1260,52 @@ export function Agent() {
     t,
   ]);
 
-  const handleSubmit = (e: FormEvent) => { e.preventDefault(); runPrompt(input.trim()); };
+  const submitComposerPrompt = useCallback((prompt: string) => {
+    composerRef.current?.submit(prompt);
+  }, []);
 
-  const handleCancel = async () => {
-    cancelPendingStreamFlush();
-    setReasoningActive(false);
+  const handleCancel = useCallback(async () => {
     if (!sessionId) {
+      flushPendingStreamUpdate();
+      const partialAnswer = act().streamingText;
+      const stoppedActivity = archiveActivity("stopped");
+      act().clearStreaming();
+      persistPartialAnswer(stoppedActivity, partialAnswer);
       act().setStatus("idle");
       return;
     }
     try {
       await api.cancelSession(sessionId);
-      act().setStatus("idle");
+      flushPendingStreamUpdate();
+      const partialAnswer = act().streamingText;
+      const stoppedActivity = archiveActivity("stopped");
       act().clearStreaming();
-      useAgentStore.setState({ toolCalls: [] });
+      persistPartialAnswer(stoppedActivity, partialAnswer);
+      act().setStatus("idle");
       toast.info(t('agent.cancelRequestSent'));
     } catch {
+      // The attempt is still live. Preserve its activity, buffered text and
+      // streaming status so a failed cancel request does not strand the turn.
       toast.error(t('agent.cancelFailed'));
     }
-  };
+  }, [
+    archiveActivity,
+    flushPendingStreamUpdate,
+    persistPartialAnswer,
+    sessionId,
+    t,
+  ]);
 
-  const handleHaltLive = useCallback(async () => {
-    if (halting) return;
-    setHalting(true);
-    try {
-      // The kill switch is global and must fire even with no active chat session
-      // (e.g. a runner started from the CLI / another session). The backend scopes
-      // the SSE broadcast by session_id when present; an empty string is a valid
-      // global trip.
-      await api.haltLive(sessionId ?? undefined);
-      // Preemptive halt: the server trips the kill switch (cancel resting orders +
-      // optional flatten per SPEC §7.5 #6) and broadcasts live.halted. Reflect
-      // optimistically and re-poll the runtime panel so the runner shows stopped.
-      setLiveHalted((cur) => cur ?? { broker: null, by: "frontend", tripped_at: new Date().toISOString() });
-      setLiveStatusRefresh((n) => n + 1);
-      toast.success(t('agent.connectorHalted'));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('agent.failedToHaltConnector'));
-    } finally {
-      setHalting(false);
-    }
-  }, [sessionId, halting]);
-
-  const handleCancelGoal = useCallback(async () => {
-    if (!sessionId || !goalSnapshot) return;
-    try {
-      await api.updateGoalStatus(sessionId, {
-        goal_id: goalSnapshot.goal.goal_id,
-        expected_goal_id: goalSnapshot.goal.goal_id,
-        status: "cancelled",
-        recap: "Cancelled from Web UI.",
-      });
-      setGoalSnapshot(null);
-      setGoalDetailsOpen(false);
-      toast.success(t('agent.researchGoalCancelled'));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('agent.failedToCancelGoal'));
-    }
-  }, [goalSnapshot, sessionId]);
-
-  const handleStartGoalEdit = useCallback(() => {
-    if (!goalSnapshot) return;
-    setGoalEditValue(goalSnapshot.goal.objective);
-    setGoalEditActive(true);
-  }, [goalSnapshot]);
-
-  const handleSaveGoalEdit = useCallback(async () => {
-    const objective = goalEditValue.trim();
-    if (!sessionId || !goalSnapshot || !objective) return;
-    try {
-      const response = await api.updateGoal(sessionId, {
-        goal_id: goalSnapshot.goal.goal_id,
-        expected_goal_id: goalSnapshot.goal.goal_id,
-        objective,
-      });
-      setGoalSnapshot(response.snapshot);
-      setGoalEditActive(false);
-      toast.success(t('agent.researchGoalUpdated'));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t('agent.failedToUpdateGoal'));
-    }
-  }, [goalEditValue, goalSnapshot, sessionId]);
+  useEffect(() => {
+    if (status !== "streaming") return;
+    const cancelOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.repeat) return;
+      event.preventDefault();
+      void handleCancel();
+    };
+    document.addEventListener("keydown", cancelOnEscape);
+    return () => document.removeEventListener("keydown", cancelOnEscape);
+  }, [handleCancel, status]);
 
   const handleContinueGoal = useCallback(async () => {
     if (!sessionId || !goalSnapshot || status === "streaming") return;
@@ -1350,20 +1317,25 @@ export function Agent() {
       meta: { goalMode: true, requestText: prompt },
       timestamp: Date.now(),
     });
+    act().startActivity(`pending-${Date.now()}`);
     act().setStatus("streaming");
     forceScrollToBottom();
-    inputRef.current?.focus();
+    composerRef.current?.focus();
     try {
       setupSSE(sessionId);
       const sent = await api.sendMessage(sessionId, prompt);
+      if (act().activity?.attemptId.startsWith("pending-")) {
+        act().setActivityAttemptId(sent.attempt_id);
+      }
       void syncCompletedAttempt(sessionId, sent.attempt_id);
     } catch (error) {
+      archiveActivity("failed");
       act().setStatus("error");
       const message = isAuthRequiredError(error) ? AUTH_REQUIRED_MESSAGE : t('agent.failedToContinue');
       toast.error(message);
       act().addMessage({ id: "", type: "error", content: message, timestamp: Date.now() });
     }
-  }, [forceScrollToBottom, goalSnapshot, sessionId, setupSSE, status, syncCompletedAttempt, t]);
+  }, [archiveActivity, forceScrollToBottom, goalSnapshot, sessionId, setupSSE, status, syncCompletedAttempt, t]);
 
   const handleRetry = useCallback((errorMsg: AgentMessage) => {
     if (status === "streaming") return;
@@ -1379,10 +1351,58 @@ export function Agent() {
       }
     }
     if (!userContent) return;
-    runPrompt(userContent);
-  }, [runPrompt, status]);
+    submitComposerPrompt(userContent);
+  }, [status, submitComposerPrompt]);
 
-  const handleExport = () => {
+  const handleContinueActivity = useCallback(() => {
+    submitComposerPrompt(t("agent.continuePrompt" as never));
+  }, [submitComposerPrompt, t]);
+
+  const handleReattachActivity = useCallback((timedOut: AgentActivity) => {
+    if (!sessionId || status === "streaming") return;
+    useAgentStore.setState((state) => ({
+      messages: state.messages.filter((message) => (
+        message.meta?.activity?.attemptId !== timedOut.attemptId
+        && message.meta?.partialAttemptId !== timedOut.attemptId
+      )),
+      activity: {
+        ...timedOut,
+        state: "thinking",
+        steps: [],
+        endedAt: undefined,
+      },
+      toolCalls: [],
+      streamingText: "",
+    }));
+    act().setStatus("streaming");
+    sseSessionRef.current = null;
+    setupSSE(sessionId);
+    forceScrollToBottom();
+  }, [forceScrollToBottom, sessionId, setupSSE, status]);
+
+  const handleGoalSnapshotChange = useCallback((snapshot: GoalSnapshot | null) => {
+    setGoalSnapshot(snapshot);
+  }, []);
+
+  const handleStartGoal = useCallback(() => {
+    setSwarmPreset(null);
+    setGoalComposerActive(true);
+  }, []);
+
+  const handleCancelGoalComposer = useCallback(() => {
+    setGoalComposerActive(false);
+  }, []);
+
+  const handleStartSwarm = useCallback(() => {
+    setGoalComposerActive(false);
+    setSwarmPreset({ name: "auto", title: "Agent Swarm" });
+  }, []);
+
+  const handleCancelSwarm = useCallback(() => {
+    setSwarmPreset(null);
+  }, []);
+
+  const handleExport = useCallback(() => {
     if (messages.length === 0) return;
     const lines: string[] = [`# Chat Export`, ``, `Export time: ${new Date().toLocaleString()}`, ``];
     for (const msg of messages) {
@@ -1409,54 +1429,21 @@ export function Agent() {
     a.download = `chat_${new Date().toISOString().slice(0, 10)}.md`;
     a.click();
     URL.revokeObjectURL(url);
-  };
-
-  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = "";
-    const blockedExts = [
-      ".exe", ".msi", ".bat", ".cmd", ".com", ".scr", ".app", ".dmg",
-      ".so", ".dll", ".dylib",
-      ".zip", ".rar", ".7z", ".tar", ".gz", ".tgz", ".bz2", ".xz",
-    ];
-    const lowered = file.name.toLowerCase();
-    if (blockedExts.some((ext) => lowered.endsWith(ext))) {
-      toast.error(t('agent.executablesNotAllowed'));
-      return;
-    }
-    if (file.size > 50 * 1024 * 1024) {
-      toast.error(t('agent.fileSizeExceeds'));
-      return;
-    }
-    setUploading(true);
-    setShowUploadMenu(false);
-    try {
-      const result = await api.uploadFile(file);
-      setAttachment({ filename: result.filename, filePath: result.file_path });
-      toast.success(t('agent.uploaded', { filename: result.filename }));
-    } catch (err) {
-      toast.error(t('agent.uploadFailed', { error: err instanceof Error ? err.message : 'Unknown error' }));
-    } finally {
-      setUploading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (uploadMenuRef.current && !uploadMenuRef.current.contains(e.target as Node)) {
-        setShowUploadMenu(false);
-      }
-    };
-    if (showUploadMenu) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }
-  }, [showUploadMenu]);
+  }, [messages, swarmRuns]);
 
   const groups = useMemo(() => groupMessages(messages), [messages]);
-  const goalProgress = useMemo(() => getGoalProgress(goalSnapshot), [goalSnapshot]);
-
+  const hasCompletedTurn = useMemo(() => {
+    let latestUserIndex = -1;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index].type === "user") {
+        latestUserIndex = index;
+        break;
+      }
+    }
+    return latestUserIndex >= 0 && messages
+      .slice(latestUserIndex + 1)
+      .some((message) => message.type === "answer" || message.type === "run_complete");
+  }, [messages]);
   useEffect(() => {
     visibleRowsSessionRef.current = sessionId;
     setVisibleRowCount(TIMELINE_WINDOW_SIZE);
@@ -1513,24 +1500,6 @@ export function Agent() {
     });
   }, [timelineRows.length]);
 
-  /* Whether connector runtime activity could be active *anywhere* — the global kill switch must be
-   * available whenever it could (audit M2 / SPEC Consent §4). Driven off both
-   * in-session SSE artifacts AND the shared `/live/status` snapshot, so a runner
-   * started from the CLI or another browser session still surfaces the halt button
-   * in a freshly-loaded web session. */
-  const liveStatusActive =
-    liveStatus != null &&
-    (liveStatus.global_halted ||
-      liveStatus.brokers.some((b) => b.auth.oauth_token_present || b.runner?.alive || b.mandate != null));
-  const liveActive =
-    liveItems.length > 0 ||
-    Object.keys(committedMandates).length > 0 ||
-    liveHalted != null ||
-    liveStatusActive;
-  /* The global kill switch reflects only a global halt from either an in-session SSE
-   * event or the polled status; broker-scoped halts stay on their broker row. */
-  const liveIsHalted = isGlobalLiveHalt(liveHalted) || (liveStatus?.global_halted ?? false);
-
   return (
     <div className="flex flex-col flex-1 min-w-0 overflow-hidden h-full">
       <div
@@ -1585,8 +1554,8 @@ export function Agent() {
                   <div key={row.key} className={shouldAnimate ? "msg-enter" : undefined}>
                     <MandateProposalCard
                       proposal={row.item.proposal}
-                      committed={committedMandates[row.item.proposal.proposal_id] ?? null}
-                      onAdjust={runPrompt}
+                      committed={row.item.committed}
+                      onAdjust={submitComposerPrompt}
                     />
                   </div>
                 );
@@ -1609,6 +1578,8 @@ export function Agent() {
                   <ThinkingTimeline
                     messages={g.msgs}
                     isLatest={isLastRow && status === "streaming"}
+                    onContinue={handleContinueActivity}
+                    onReattach={handleReattachActivity}
                   />
                 </div>
               );
@@ -1640,38 +1611,16 @@ export function Agent() {
 
           {/* Streaming area - single stable wrapper to prevent insertBefore DOM race */}
           {status === "streaming" && (
-            <div className="flex gap-3 msg-enter" aria-live="polite">
+            <div className="flex gap-3 msg-enter">
               <AgentAvatar />
-              <div className="flex-1 min-w-0 space-y-1.5">
-                {!reasoningActive && !streamingText && toolCalls.length === 0 && !Object.values(swarmRuns).some((run) => run.status === "running") && (
-                  <div role="status" className="flex items-center gap-2 text-xs text-muted-foreground pt-1">
-                    <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />
-                    <span>{t('agent.agentWorking')}</span>
-                  </div>
-                )}
-                {reasoningActive && !streamingText && (
-                  <div role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />
-                    <span>{t('agent.reasoning')}</span>
-                  </div>
-                )}
+              <div className="flex-1 min-w-0 space-y-2">
+                {activity && <ActivityLine activity={activity} />}
                 {streamingText && (
-                  <MarkdownContent content={streamingText} streaming showCursor />
-                )}
-                {toolCalls.length > 0 && (
-                  <ToolProgressIndicator toolCalls={toolCalls} />
+                  <div aria-live="polite" aria-atomic="false">
+                    <MarkdownContent content={streamingText} streaming showCursor />
+                  </div>
                 )}
               </div>
-            </div>
-          )}
-
-          {/* Persistent streaming pulse bar — always visible while agent is working */}
-          {status === "streaming" && (
-            <div className="flex items-center gap-2 px-1 pt-1">
-              <div className="h-0.5 flex-1 rounded-full bg-primary/20 overflow-hidden">
-                <div className="h-full w-1/3 bg-primary rounded-full animate-[pulse-slide_2s_ease-in-out_infinite]" />
-              </div>
-              <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">{t('agent.running')}</span>
             </div>
           )}
 
@@ -1689,416 +1638,49 @@ export function Agent() {
         <ConversationTimeline messages={messages} containerRef={listRef} />
       </div>
 
-      <form
+      <div
         data-agent-composer
-        onSubmit={handleSubmit}
         className="border-t p-4 bg-background/80 backdrop-blur-sm"
       >
-        <div className="max-w-3xl mx-auto space-y-2">
-          {/* Swarm preset badge */}
-          {swarmPreset && (
-            <div className="flex items-center gap-1">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/10 text-primary text-xs font-medium">
-                <Users className="h-3 w-3" />
-                {swarmPreset.title}
-                <button type="button" onClick={() => setSwarmPreset(null)} className="hover:text-destructive transition-colors">
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            </div>
-          )}
-          {goalComposerActive && (
-            <div className="flex items-center gap-1">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/10 text-primary text-xs font-medium">
-                <Target className="h-3 w-3" />
-                {t("agent.newResearchGoal")}
-                <button type="button" onClick={() => setGoalComposerActive(false)} className="hover:text-destructive transition-colors">
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            </div>
-          )}
-          {goalSnapshot && !goalComposerActive && (
-            <div className="grid gap-2">
-              <button
-                type="button"
-                onClick={() => setGoalDetailsOpen((open) => !open)}
-                className="inline-flex max-w-full items-center gap-1.5 justify-self-start rounded-lg bg-primary/10 px-2.5 py-1 text-left text-xs font-medium text-primary transition-colors hover:bg-primary/15"
-                title={goalSnapshot.goal.objective}
-                aria-label={t("agent.activeResearchGoal")}
-                aria-expanded={goalDetailsOpen}
-              >
-                <Target className="h-3 w-3 shrink-0" />
-                <span className="shrink-0">{t('agent.goal')}</span>
-                <span className="truncate text-muted-foreground">
-                  {goalSnapshot.goal.ui_summary || goalSnapshot.goal.objective}
-                </span>
-                {goalProgress.metLabel && (
-                  <span className="shrink-0 font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
-                    {goalProgress.metLabel}
-                  </span>
-                )}
-                {goalProgress.evidenceTotal > 0 && (
-                  <span className="shrink-0 rounded bg-background px-1 font-mono text-[10px] text-primary" title={t("agent.evidenceCollectedTitle")}>
-                    {t("agent.evidenceCount", { count: goalProgress.evidenceTotal })}
-                  </span>
-                )}
-                <ChevronDown
-                  className={[
-                    "h-3 w-3 shrink-0 transition-transform",
-                    goalDetailsOpen ? "rotate-180" : "",
-                  ].join(" ")}
-                  aria-hidden="true"
-                />
-              </button>
-              {goalDetailsOpen && (
-                <div className="grid gap-3 rounded-xl border border-primary/20 bg-background/95 p-3 text-xs shadow-sm">
-                  {goalEditActive ? (
-                    <div className="grid gap-2">
-                      <textarea
-                        value={goalEditValue}
-                        onChange={(event) => setGoalEditValue(event.target.value)}
-                        rows={3}
-                        aria-label={t("agent.editGoalObjectiveLabel")}
-                        className="w-full rounded-lg border bg-background px-3 py-2 text-xs leading-relaxed text-foreground outline-none focus:ring-2 focus:ring-primary/30"
-                      />
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setGoalEditActive(false)}
-                          className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
-                        >
-                          <X className="h-3 w-3" />
-                          {t("agent.cancel")}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleSaveGoalEdit}
-                          disabled={!goalEditValue.trim()}
-                          className="inline-flex items-center gap-1 rounded-lg bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground transition-opacity disabled:opacity-40"
-                        >
-                          <Check className="h-3 w-3" />
-                          {t("agent.save")}
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-lg border bg-muted/20 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-                      {goalSnapshot.goal.objective}
-                    </div>
-                  )}
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-lg border bg-muted/20 p-2.5">
-                      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        {t("agent.criteria")}
-                      </div>
-                      <div className="mt-1 font-mono text-base font-semibold text-foreground">
-                        {goalProgress.label || "0/0"}
-                      </div>
-                    </div>
-                    <div className="rounded-lg border bg-muted/20 p-2.5">
-                      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        {t("agent.evidence")}
-                      </div>
-                      <div className="mt-1 font-mono text-base font-semibold text-foreground">
-                        {goalProgress.evidenceTotal}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="grid gap-1.5">
-                    {goalSnapshot.criteria.map((criterion, index) => {
-                      const evidenceCount = criterionEvidenceCount(goalSnapshot, criterion.criterion_id);
-                      const displayStatus = criterionCovered(goalSnapshot, criterion) && !isCriterionStatusMet(criterion.status)
-                        ? "covered"
-                        : statusLabel(criterion.status);
-                      return (
-                        <div
-                          key={criterion.criterion_id}
-                          className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] items-start gap-2 rounded-lg border bg-muted/20 p-2"
-                        >
-                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[10px] text-muted-foreground">
-                            {criterionIndexLabel(index)}
-                          </span>
-                          <span className="min-w-0">
-                            <span className="block truncate font-medium text-foreground">{criterion.text}</span>
-                            <span className="block text-[11px] text-muted-foreground">
-                              {displayStatus}
-                            </span>
-                          </span>
-                          <span className="rounded-full border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-                            {evidenceCount} ev
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {goalSnapshot.evidence.length > 0 && (
-                    <div className="grid gap-1.5 border-t pt-2">
-                      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        {t("agent.recentEvidence")}
-                      </div>
-                      {latestGoalEvidence(goalSnapshot).map((item) => (
-                        <div key={item.evidence_id} className="rounded-lg bg-muted/20 px-2 py-1.5">
-                          <div className="mb-0.5 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
-                            <span className="truncate">{item.source_provider || "evidence"}</span>
-                            <span>{statusLabel(item.verification_status)}</span>
-                          </div>
-                          <div className="line-clamp-2 text-[11px] leading-relaxed text-foreground">
-                            {item.text}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <div className="flex flex-wrap justify-end gap-2 border-t pt-2">
-                    <button
-                      type="button"
-                      onClick={handleContinueGoal}
-                      disabled={status === "streaming"}
-                      className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
-                    >
-                      <Play className="h-3 w-3" />
-                      {t("agent.continue")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleStartGoalEdit}
-                      disabled={goalEditActive}
-                      className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
-                    >
-                      <Pencil className="h-3 w-3" />
-                      {t("agent.edit")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleCancelGoal}
-                      className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-destructive/40 hover:text-destructive"
-                    >
-                      <X className="h-3 w-3" />
-                      {t("agent.cancelGoal")}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          {/* Persistent live runtime status panel — sits alongside the goal/mandate
-              badges (SPEC §7.5 + audit C2). Self-hides when no broker is configured. */}
-          <RunnerStatus
-            status={liveStatus}
-            unavailable={liveStatusUnavailable}
-            halted={liveIsHalted}
-            onRefresh={refreshLiveStatus}
-          />
-          {/* Attachment badge */}
-          {attachment && (
-            <div className="flex items-center gap-1">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/10 text-primary text-xs font-medium">
-                <Paperclip className="h-3 w-3" />
-                {attachment.filename}
-                <button type="button" onClick={() => setAttachment(null)} className="hover:text-destructive transition-colors">
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            </div>
-          )}
-          {/* Uploading indicator */}
-          {uploading && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              {t("agent.uploading")}
-            </div>
-          )}
-          {/* Persistent kill switch — distinct from the per-turn Stop button
-              above; disables all live order activity (SPEC Consent §4).
-              Given a top border + extra top padding so this safety-critical
-              control visually separates from the lighter decorative chips
-              (swarm/goal/attachment) stacked above it. */}
-          {liveActive && (
-            <div className="flex items-center gap-2 border-t border-border/60 pt-2">
-              {liveIsHalted ? (
-                <span className="inline-flex items-center gap-1.5 rounded-lg bg-destructive/10 px-2.5 py-1 text-xs font-medium text-destructive">
-                  <OctagonX className="h-3 w-3" />
-                  {t("agent.connectorHalted")}
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleHaltLive}
-                  disabled={halting}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/40 bg-destructive/5 px-2.5 py-1 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-40"
-                  title={t("agent.haltConnectorTitle")}
-                >
-                  {halting ? <Loader2 className="h-3 w-3 animate-spin" /> : <OctagonX className="h-3 w-3" />}
-                  {t("agent.haltConnector")}
-                </button>
-              )}
-            </div>
-          )}
-          <div className="flex items-end gap-2 rounded-2xl border border-border/60 bg-background p-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.03),0_8px_24px_-12px_rgba(0,0,0,0.12)] transition-shadow focus-within:ring-2 focus-within:ring-primary/25 dark:bg-card">
-            {/* "+" menu: PDF upload + Swarm presets */}
-            <div className="relative" ref={uploadMenuRef}>
-              <button
-                type="button"
-                onClick={() => setShowUploadMenu(prev => !prev)}
-                disabled={status === "streaming" || uploading}
-                className="w-10 h-10 rounded-full border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40 shrink-0"
-                title={t("agent.moreOptions")}
-              >
-                <Plus className="h-4 w-4" />
-              </button>
-              {showUploadMenu && (
-                <div className="absolute bottom-full left-0 mb-2 w-52 rounded-xl border bg-background/95 backdrop-blur-sm shadow-lg py-1 z-50">
-                  <button
-                    type="button"
-                    onClick={() => { fileInputRef.current?.click(); setShowUploadMenu(false); }}
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-muted transition-colors flex items-center gap-2"
-                  >
-                    <Paperclip className="h-4 w-4" />
-                    {t("agent.uploadPdf")}
-                  </button>
-                  <div className="border-t my-1" />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowUploadMenu(false);
-                      setSwarmPreset(null);
-                      setGoalComposerActive(true);
-                      inputRef.current?.focus();
-                    }}
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-muted transition-colors flex items-center gap-2"
-                  >
-                    <Target className="h-4 w-4" />
-                    {t("agent.researchGoal")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowUploadMenu(false);
-                      setGoalComposerActive(false);
-                      setSwarmPreset({ name: "auto", title: "Agent Swarm" });
-                      inputRef.current?.focus();
-                    }}
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-muted transition-colors flex items-center gap-2"
-                  >
-                    <Users className="h-4 w-4" />
-                    {t("agent.agentSwarm")}
-                  </button>
-                  <div className="border-t my-1" />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowUploadMenu(false);
-                      void runPrompt(CONNECTOR_CHECK_PROMPT);
-                    }}
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-muted transition-colors flex items-center gap-2"
-                  >
-                    <Landmark className="h-4 w-4" />
-                    {t("agent.checkConnector")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowUploadMenu(false);
-                      void runPrompt(CONNECTOR_PORTFOLIO_PROMPT);
-                    }}
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-muted transition-colors flex items-center gap-2"
-                  >
-                    <Landmark className="h-4 w-4" />
-                    {t("agent.analyzePortfolio")}
-                  </button>
-                </div>
-              )}
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.docx,.xlsx,.xls,.pptx,.csv,.tsv,.txt,.md,.log,.json,.yaml,.yml,.toml,.html,.xml,.rst,.png,.jpg,.jpeg,.gif,.bmp,.webp,.tiff"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-            <textarea
-              ref={inputRef}
-              value={input}
-              rows={1}
-              onChange={(e) => setInput(e.target.value)}
-              onCompositionStart={() => {
-                isComposingRef.current = true;
-              }}
-              onCompositionEnd={() => {
-                isComposingRef.current = false;
-                lastCompositionEndRef.current = Date.now();
-              }}
-              onInput={(e) => {
-                const el = e.target as HTMLTextAreaElement;
-                el.style.height = "auto";
-                el.style.height = el.scrollHeight + "px";
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  const nativeEvent = e.nativeEvent as KeyboardEvent & { isComposing?: boolean };
-                  const justFinishedComposing = Date.now() - lastCompositionEndRef.current < 80;
-                  if (isComposingRef.current || nativeEvent.isComposing || nativeEvent.keyCode === 229) {
-                    return;
-                  }
-                  if (justFinishedComposing) {
-                    e.preventDefault();
-                    return;
-                  }
-                  e.preventDefault();
-                  runPrompt(input.trim());
-                }
-              }}
-              placeholder={
-                status === "streaming"
-                  ? t("agent.agentWorking")
-                  : goalComposerActive
-                  ? t("agent.describeGoal")
-                  : t("agent.placeholder")
+        <div className="max-w-3xl mx-auto">
+          <LiveRuntimePanel
+            ref={liveRuntimeRef}
+            sessionId={sessionId}
+            hasLiveItems={liveItems.length > 0}
+          >
+            <Composer
+              ref={composerRef}
+              streaming={status === "streaming"}
+              activityVerb={activity?.verb}
+              hasCompletedTurn={hasCompletedTurn}
+              showExport={sessionId != null}
+              canExport={messages.length > 0}
+              goalComposerActive={goalComposerActive}
+              swarmPreset={swarmPreset}
+              panels={
+                goalSnapshot && !goalComposerActive ? (
+                  <GoalPanel
+                    key={goalSnapshot.goal.goal_id}
+                    snapshot={goalSnapshot}
+                    sessionId={sessionId}
+                    streaming={status === "streaming"}
+                    openRequest={goalOpenRequestRef.current}
+                    onSnapshotChange={handleGoalSnapshotChange}
+                    onContinue={handleContinueGoal}
+                  />
+                ) : undefined
               }
-              aria-label={t("agent.messageInputLabel")}
-              aria-readonly={status === "streaming"}
-              className={[
-                "min-h-[52px] flex-1 resize-none overflow-y-auto bg-transparent px-3 py-3 text-sm outline-none max-h-32",
-                status === "streaming" ? "cursor-not-allowed text-muted-foreground/70" : "",
-              ].join(" ")}
-              readOnly={status === "streaming"}
+              onSubmit={runPrompt}
+              onCancel={handleCancel}
+              onExport={handleExport}
+              onStartGoal={handleStartGoal}
+              onCancelGoal={handleCancelGoalComposer}
+              onStartSwarm={handleStartSwarm}
+              onCancelSwarm={handleCancelSwarm}
             />
-            {sessionId && (
-              <button
-                type="button"
-                onClick={handleExport}
-                disabled={messages.length === 0}
-                className="h-10 px-3 rounded-xl border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-30 disabled:pointer-events-none"
-                title={t('agent.exportChat')}
-              >
-                <Download className="h-4 w-4" />
-              </button>
-            )}
-            {status === "streaming" ? (
-              <button
-                type="button"
-                onClick={handleCancel}
-                className="h-10 px-4 rounded-xl bg-destructive text-destructive-foreground text-sm font-medium hover:opacity-90 transition-opacity"
-                title={t('agent.stopGeneration')}
-              >
-                <Square className="h-4 w-4" />
-              </button>
-            ) : (
-              <button
-                type="submit"
-                disabled={goalComposerActive ? !input.trim() : (!input.trim() && !attachment)}
-                className="h-10 px-4 rounded-xl bg-primary text-primary-foreground text-sm font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
-                title={t("agent.send")}
-                aria-label={t("agent.send")}
-              >
-                <Send className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-          <p className="px-1 text-[11px] text-muted-foreground">{t("agent.inputHint")}</p>
+          </LiveRuntimePanel>
         </div>
-      </form>
+      </div>
     </div>
   );
 }

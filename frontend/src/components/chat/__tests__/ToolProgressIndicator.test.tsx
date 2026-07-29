@@ -1,5 +1,4 @@
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { ToolProgressIndicator } from "../ToolProgressIndicator";
 import type { ToolCallEntry } from "@/types/agent";
 
@@ -31,7 +30,6 @@ describe("ToolProgressIndicator", () => {
   it("keeps completed tools visible for the remainder of the attempt", () => {
     const tcs = [makeTc({ status: "ok" }), makeTc({ id: "tc-2", status: "error" })];
     render(<ToolProgressIndicator toolCalls={tcs} />);
-    expect(screen.getAllByText("2 tools completed")).toHaveLength(2);
     expect(screen.getAllByText(/Run the backtest/)).toHaveLength(2);
   });
 
@@ -43,18 +41,26 @@ describe("ToolProgressIndicator", () => {
   it("renders single running tool", () => {
     const tcs = [makeTc({ elapsed_s: 5 })];
     render(<ToolProgressIndicator toolCalls={tcs} />);
-    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.getByText(/Run the backtest/)).toBeInTheDocument();
     expect(screen.getByText("5s")).toBeInTheDocument();
   });
 
-  it("renders multiple running tools with header", () => {
+  it("uses the shared elapsed format for persisted completed steps", () => {
+    render(<ToolProgressIndicator toolCalls={[
+      makeTc({ status: "ok", elapsed_s: undefined, elapsed_ms: 65_000 }),
+    ]} />);
+
+    expect(screen.getByText("1m 5s")).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("renders multiple running tools without a second status header", () => {
     const tcs = [
       makeTc({ id: "tc-1", tool: "bash" }),
       makeTc({ id: "tc-2", tool: "write_file" }),
     ];
     render(<ToolProgressIndicator toolCalls={tcs} />);
-    expect(screen.getAllByText("2 tools running")).toHaveLength(2);
+    expect(screen.queryByText("2 tools running")).not.toBeInTheDocument();
     expect(screen.getByText(/Run command/)).toBeInTheDocument();
     expect(screen.getByText(/Generate code/)).toBeInTheDocument();
   });
@@ -68,8 +74,7 @@ describe("ToolProgressIndicator", () => {
     expect(screen.getAllByText(/Run the backtest/)).toHaveLength(2);
   });
 
-  it("shows the most recent running tools behind a clickable earlier count", async () => {
-    const user = userEvent.setup();
+  it("shows every row when ActivityLine is expanded", () => {
     const tcs = [
       makeTc({ id: "tc-1", tool: "bash" }),
       makeTc({ id: "tc-2", tool: "write_file" }),
@@ -78,18 +83,13 @@ describe("ToolProgressIndicator", () => {
     ];
     render(<ToolProgressIndicator toolCalls={tcs} />);
 
-    expect(screen.queryByText(/Run command/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Generate code/)).not.toBeInTheDocument();
-    expect(screen.getByText(/Run the backtest/)).toBeInTheDocument();
-    expect(screen.getByText(/Read file/)).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "+2 earlier" }));
     expect(screen.getByText(/Run command/)).toBeInTheDocument();
     expect(screen.getByText(/Generate code/)).toBeInTheDocument();
+    expect(screen.getByText(/Run the backtest/)).toBeInTheDocument();
+    expect(screen.getByText(/Read file/)).toBeInTheDocument();
   });
 
-  it("prioritizes running rows, then the most recent terminal row", async () => {
-    const user = userEvent.setup();
+  it("prioritizes running rows, then all terminal rows newest-first", () => {
     const tcs = [
       makeTc({ id: "tc-1", tool: "bash", status: "ok" }),
       makeTc({ id: "tc-2", tool: "write_file", status: "error" }),
@@ -102,12 +102,9 @@ describe("ToolProgressIndicator", () => {
     expect(visibleSteps).toEqual([
       "Step 4 · Read file",
       "Step 3 · Run the backtest",
+      "Step 2 · Generate code",
+      "Step 1 · Run command",
     ]);
-    expect(screen.queryByText(/Generate code/)).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "+2 earlier" }));
-    expect(screen.getByText(/Generate code/)).toBeInTheDocument();
-    expect(screen.getByText(/Run command/)).toBeInTheDocument();
   });
 
   it("shows determinate progress bar when progress data exists", () => {
@@ -123,12 +120,10 @@ describe("ToolProgressIndicator", () => {
     expect(screen.getByRole("progressbar")).toBeInTheDocument();
   });
 
-  it("announces only coarse status and hides ticking elapsed numerals", () => {
+  it("leaves announcements to ActivityLine and hides ticking elapsed numerals", () => {
     render(<ToolProgressIndicator toolCalls={[makeTc({ elapsed_s: 5 })]} />);
 
-    const status = screen.getByRole("status");
-    expect(status).toHaveClass("sr-only");
-    expect(status).not.toHaveAttribute("aria-atomic");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.getByText("5s")).toHaveAttribute("aria-hidden", "true");
   });
 });

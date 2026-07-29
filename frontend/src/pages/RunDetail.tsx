@@ -182,8 +182,7 @@ export function RunDetail() {
     <div className="p-8 space-y-2">
       <p className="text-red-500 font-medium">{i18n.t("runDetail.runNotFound")}</p>
       <p className="text-sm text-muted-foreground">
-        {i18n.t("runDetail.runNotFoundDesc")}, or your browser may not have API access configured.
-        Check that the API authentication key is set in Settings if accessing remotely.
+        {i18n.t("runDetail.runNotFoundDesc")}
       </p>
       <button
         onClick={() => navigate(-1)}
@@ -393,9 +392,9 @@ function RunCardTab({ card }: { card: RunCard }) {
   return (
     <div className="p-4 space-y-4">
       <div className="grid gap-3 md:grid-cols-4">
-        <RunCardStat label={i18n.t("runDetail.schema")} value={card.schema_version || "unknown"} />
+        <RunCardStat label={i18n.t("runDetail.schema")} value={card.schema_version || i18n.t("runDetail.unknown" as any)} />
         <RunCardStat label={i18n.t("runDetail.generated")} value={formatRunCardValue(card.generated_at)} />
-        <RunCardStat label={i18n.t("runDetail.dataSources")} value={dataSources.length ? dataSources.join(", ") : "None recorded"} />
+        <RunCardStat label={i18n.t("runDetail.dataSources")} value={dataSources.length ? dataSources.join(", ") : i18n.t("runDetail.noneRecorded" as any)} />
         <RunCardStat label={i18n.t("runDetail.warnings")} value={String(warnings.length)} tone={warnings.length ? "warning" : "normal"} />
       </div>
 

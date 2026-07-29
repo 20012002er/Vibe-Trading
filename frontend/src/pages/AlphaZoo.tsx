@@ -46,8 +46,6 @@ import { useThemeDark } from "@/lib/theme-store";
 
 interface ZooCard {
   id: string;
-  title: string;
-  description: string;
   approxCount: number;
 }
 
@@ -56,45 +54,30 @@ interface ZooCard {
 const ZOO_CARDS: ZooCard[] = [
   {
     id: "qlib158",
-    title: "Qlib 158",
-    description:
-      "Microsoft Qlib's full 158-feature library covering momentum, volatility, volume and rolling statistical signals.",
     approxCount: 154,
   },
   {
     id: "alpha101",
-    title: "Kakushadze 101 Formulaic Alphas",
-    description:
-      "The 101 formulaic alphas from Kakushadze (2015); short-horizon cross-sectional signals.",
     approxCount: 101,
   },
   {
     id: "gtja191",
-    title: "GTJA 191",
-    description:
-      "Guotai Junan Securities' 191 alphas; technical and microstructure signals tuned to China A-share markets.",
     approxCount: 191,
   },
   {
     id: "academic",
-    title: "Academic Anomalies",
-    description:
-      "Curated long-horizon anomalies from the academic literature (value, momentum, quality, low-vol, etc.).",
     approxCount: 10,
   },
   {
     id: "fundamental",
-    title: "PIT-Safe Fundamentals",
-    description:
-      "Quality and value factors computed from PIT-safe SEC company facts — earnings yield, ROE, gross profitability, asset growth (filed-date anchored).",
     approxCount: 4,
   },
 ];
 
 const UNIVERSE_OPTIONS = [
-  { value: "csi300", label: "CSI 300 (China A)" },
-  { value: "sp500", label: "S&P 500 (US)" },
-  { value: "btc-usdt", label: "BTC-USDT (Crypto)" },
+  { value: "csi300" },
+  { value: "sp500" },
+  { value: "btc-usdt" },
 ];
 
 const PAGE_SIZE = 50;
@@ -178,7 +161,7 @@ function BrowseView() {
       })
       .catch((err: unknown) => {
         if (!alive) return;
-        const msg = err instanceof Error ? err.message : "Failed to load alphas";
+        const msg = err instanceof Error ? err.message : i18n.t("alphaZoo.failedToLoadAlphas" as any);
         toast.error(msg);
         setAlphas([]);
         setTotal(0);
@@ -247,9 +230,9 @@ function BrowseView() {
                   {z.approxCount}
                 </span>
               </div>
-              <h3 className="font-semibold text-sm leading-tight">{i18n.t("alphaZoo.zooCardTitle." + z.id as any, { defaultValue: z.title })}</h3>
+              <h3 className="font-semibold text-sm leading-tight">{i18n.t("alphaZoo.zooCardTitle." + z.id as any)}</h3>
               <p className="text-xs text-muted-foreground line-clamp-3">
-                {i18n.t("alphaZoo.zooCardDesc." + z.id as any, { defaultValue: z.description })}
+                {i18n.t("alphaZoo.zooCardDesc." + z.id as any)}
               </p>
             </button>
           );
@@ -290,7 +273,7 @@ function BrowseView() {
             <option value="">{i18n.t("alphaZoo.allZoos")}</option>
             {ZOO_CARDS.map((z) => (
               <option key={z.id} value={z.id}>
-                {i18n.t("alphaZoo.zooCardTitle." + z.id as any, { defaultValue: z.title })}
+                {i18n.t("alphaZoo.zooCardTitle." + z.id as any)}
               </option>
             ))}
           </select>
@@ -326,7 +309,7 @@ function BrowseView() {
             <option value="">{i18n.t("alphaZoo.allUniverses")}</option>
             {UNIVERSE_OPTIONS.map((u) => (
               <option key={u.value} value={u.value}>
-                {i18n.t("alphaZoo.universeOption." + u.value as any, { defaultValue: u.label })}
+                {i18n.t("alphaZoo.universeOption." + u.value as any)}
               </option>
             ))}
           </select>
@@ -403,7 +386,7 @@ function BrowseView() {
                         type="checkbox"
                         checked={selected.has(a.id)}
                         onChange={() => toggleSelected(a.id)}
-                        aria-label={`Select ${a.id} for compare`}
+                        aria-label={i18n.t("alphaZoo.selectAlphaForCompare" as any, { id: a.id })}
                         className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
                       />
                     </td>
@@ -478,7 +461,7 @@ function DetailView({ alphaId }: DetailProps) {
       })
       .catch((err: unknown) => {
         if (!alive) return;
-        const msg = err instanceof Error ? err.message : "Failed to load alpha";
+        const msg = err instanceof Error ? err.message : i18n.t("alphaZoo.failedToLoadAlpha" as any);
         setError(msg);
       })
       .finally(() => {
@@ -693,14 +676,12 @@ function BenchView() {
       setJobId(res.job_id);
       await attachStream(res.job_id);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to start bench";
+      const msg = err instanceof Error ? err.message : i18n.t("alphaZoo.failedToStartBench" as any);
       // BTC-USDT is single-asset — surface inline rather than as a toast,
       // because the form is the action context and the message includes a
       // concrete suggestion for the user's next step.
       if (msg.toLowerCase().includes("single-asset")) {
-        setFormError(
-          `${msg} Try \`sp500\` or \`csi300\` for a meaningful cross-sectional IC.`,
-        );
+        setFormError(i18n.t("alphaZoo.singleAssetHint" as any, { message: msg }));
       } else {
         toast.error(msg);
       }
@@ -751,7 +732,7 @@ function BenchView() {
         sourceRef.current = null;
         return;
       }
-      let msg = "Bench stream error";
+      let msg = i18n.t("alphaZoo.benchStreamError" as any);
       try {
         const data = JSON.parse((e as MessageEvent).data || "{}");
         if (typeof data.message === "string") msg = data.message;
@@ -804,7 +785,7 @@ function BenchView() {
           >
             {ZOO_CARDS.map((z) => (
               <option key={z.id} value={z.id}>
-                {i18n.t("alphaZoo.zooCardTitle." + z.id as any, { defaultValue: z.title })}
+                {i18n.t("alphaZoo.zooCardTitle." + z.id as any)}
               </option>
             ))}
           </select>
@@ -820,7 +801,7 @@ function BenchView() {
           >
             {UNIVERSE_OPTIONS.map((u) => (
               <option key={u.value} value={u.value}>
-                {i18n.t("alphaZoo.universeOption." + u.value as any, { defaultValue: u.label })}
+                {i18n.t("alphaZoo.universeOption." + u.value as any)}
               </option>
             ))}
           </select>
@@ -906,7 +887,9 @@ function ProgressPanel({
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-          {jobId ? `Job ${jobId.slice(0, 12)}…` : "Submitting…"}
+          {jobId
+            ? i18n.t("alphaZoo.job" as any, { id: jobId.slice(0, 12) })
+            : i18n.t("alphaZoo.submitting")}
         </span>
         {progress && (
           <span className="font-mono tabular-nums">
@@ -1106,10 +1089,10 @@ function CategoryBadge({ category }: { category: AlphaBenchTopRow["category"] })
 /* ---------- Compare view ---------- */
 
 const SORT_OPTIONS = [
-  { value: "ir", label: "IR (information ratio)" },
-  { value: "ic_mean", label: "IC mean" },
-  { value: "ic_positive_ratio", label: "IC > 0 ratio" },
-  { value: "ic_count", label: "Sample count" },
+  { value: "ir" },
+  { value: "ic_mean" },
+  { value: "ic_positive_ratio" },
+  { value: "ic_count" },
 ];
 
 /** Split a free-text id list on commas / whitespace; dedupe, preserve order. */
@@ -1197,7 +1180,7 @@ function CompareView() {
         sourceRef.current = null;
         return;
       }
-      let msg = "Compare stream error";
+      let msg = i18n.t("alphaZoo.compareStreamError" as any);
       try {
         const data = JSON.parse((e as MessageEvent).data || "{}");
         if (typeof data.message === "string") msg = data.message;
@@ -1215,7 +1198,7 @@ function CompareView() {
     e.preventDefault();
     if (status === "submitting" || status === "streaming") return;
     if (ids.length < 2) {
-      setFormError("Enter at least 2 distinct alpha ids to compare.");
+      setFormError(i18n.t("alphaZoo.enterAtLeast2"));
       return;
     }
     setStatus("submitting");
@@ -1235,7 +1218,7 @@ function CompareView() {
       await attachStream(res.job_id);
     } catch (err: unknown) {
       const msg =
-        err instanceof Error ? err.message : "Failed to start comparison";
+        err instanceof Error ? err.message : i18n.t("alphaZoo.failedToStartComparison" as any);
       toast.error(msg);
       setStatus("error");
     }
@@ -1295,7 +1278,7 @@ function CompareView() {
             >
               {UNIVERSE_OPTIONS.map((u) => (
                 <option key={u.value} value={u.value}>
-                  {i18n.t("alphaZoo.universeOption." + u.value as any, { defaultValue: u.label })}
+                  {i18n.t("alphaZoo.universeOption." + u.value as any)}
                 </option>
               ))}
             </select>
@@ -1322,7 +1305,7 @@ function CompareView() {
             >
               {SORT_OPTIONS.map((s) => (
                 <option key={s.value} value={s.value}>
-                  {i18n.t("alphaZoo.sortOption." + (s.value === "ic_mean" ? "icMean" : s.value === "ic_positive_ratio" ? "icPositiveRatio" : s.value === "ic_count" ? "icCount" : s.value) as any, { defaultValue: s.label })}
+                  {i18n.t("alphaZoo.sortOption." + (s.value === "ic_mean" ? "icMean" : s.value === "ic_positive_ratio" ? "icPositiveRatio" : s.value === "ic_count" ? "icCount" : s.value) as any)}
                 </option>
               ))}
             </select>

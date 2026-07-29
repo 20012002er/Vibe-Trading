@@ -455,7 +455,27 @@
     "goalModeChip": "Research goal",
     "continueGoalMessage": "Continue research goal: {{goal}}",
     "loadEarlier": "Load earlier messages",
-    "authRequired": "Remote API access requires an API key. Add it in Settings, or run the backend on localhost for local-only use."
+    "authRequired": "Remote API access requires an API key. Add it in Settings, or run the backend on localhost for local-only use.",
+    "followUpPlaceholder": "Ask about this run — e.g. why is the drawdown so deep?",
+    "continuePrompt": "Continue from where you stopped.",
+    "doneMarker": "Run complete",
+    "backgroundRunComplete": "A run finished in another session.",
+    "activity": {
+      "verbs": {
+        "readingMarketData": "Reading the market data",
+        "writingStrategy": "Writing the strategy",
+        "runningBacktest": "Running the backtest",
+        "validatingNumbers": "Double-checking the numbers",
+        "working": "Working"
+      },
+      "done": "Done",
+      "stopped": "Stopped by you",
+      "timeout": "Stopped waiting after {{elapsed}} — the run may still be finishing",
+      "failed": "Failed",
+      "steps": "{{count}} steps",
+      "continue": "Continue",
+      "reattach": "Re-attach"
+    }
   },
   "runDetail": {
     "title": "Run Detail",
@@ -505,7 +525,9 @@
     "noValidationPayload": "No validation payload recorded.",
     "noArtifactChecksums": "No artifact checksums recorded.",
     "noCodeFiles": "No code files.",
-    "fullReport": "Full Report →"
+    "fullReport": "Full Report →",
+    "unknown": "unknown",
+    "noneRecorded": "None recorded"
   },
   "compare": {
     "title": "Strategy Comparison",
@@ -685,7 +707,16 @@
       "icMean": "IC mean",
       "icPositiveRatio": "IC > 0 ratio",
       "icCount": "Sample count"
-    }
+    },
+    "failedToLoadAlphas": "Failed to load alphas",
+    "selectAlphaForCompare": "Select {{id}} for compare",
+    "failedToLoadAlpha": "Failed to load alpha",
+    "failedToStartBench": "Failed to start bench",
+    "singleAssetHint": "{{message}} Try `sp500` or `csi300` for a meaningful cross-sectional IC.",
+    "benchStreamError": "Bench stream error",
+    "job": "Job {{id}}…",
+    "compareStreamError": "Compare stream error",
+    "failedToStartComparison": "Failed to start comparison"
   },
   "validation": {
     "noData": "No validation data available.",

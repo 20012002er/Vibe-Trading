@@ -3,11 +3,53 @@ import type { AgentMessage, SwarmRunStatus, ToolCallEntry } from "@/types/agent"
 
 const SESSION_CACHE_MAX = 5;
 
+export type ActivityState =
+  | "thinking"
+  | "working"
+  | "responding"
+  | "stopped"
+  | "timeout"
+  | "failed"
+  | "done";
+
+export type ActivityVerb =
+  | "readingMarketData"
+  | "writingStrategy"
+  | "runningBacktest"
+  | "validatingNumbers"
+  | "working";
+
+export interface AgentActivity {
+  attemptId: string;
+  state: ActivityState;
+  verb: ActivityVerb;
+  steps: ToolCallEntry[];
+  startedAt: number;
+  endedAt?: number;
+}
+
+const VALIDATION_TOOL = /(?:validate|validation|monte_carlo|bootstrap|walk_forward|stress_test|sanity_check)/;
+const BACKTEST_TOOL = /backtest/;
+const STRATEGY_TOOL = /(?:write|edit|patch|strategy|signal|scaffold|generate)/;
+const MARKET_DATA_TOOL = /(?:market_data|search|read|fetch|ticker|quote|candle|orderbook|funding|open_interest|financial|filing|news|profile|screener|fred|iwencai|fund_flow|dragon|northbound|margin|block_trade|shareholder|lockup|sector|research|options_chain)/;
+
+/** Map the latest tool stage to the user-facing activity verb key. */
+export function deriveActivityVerb(tool: string | undefined): ActivityVerb {
+  const normalized = (tool || "").toLowerCase();
+  if (VALIDATION_TOOL.test(normalized)) return "validatingNumbers";
+  if (BACKTEST_TOOL.test(normalized)) return "runningBacktest";
+  if (STRATEGY_TOOL.test(normalized)) return "writingStrategy";
+  if (MARKET_DATA_TOOL.test(normalized)) return "readingMarketData";
+  return "working";
+}
+
 export interface AgentMessageMeta {
   attachment?: { filename: string };
   swarmMode?: boolean;
   goalMode?: boolean;
   requestText?: string;
+  activity?: AgentActivity;
+  partialAttemptId?: string;
 }
 
 export type StoredAgentMessage = AgentMessage & { meta?: AgentMessageMeta };
@@ -26,6 +68,7 @@ interface AgentState {
   streamingSessionId: string | null;
 
   toolCalls: ToolCallEntry[];
+  activity: AgentActivity | null;
   swarmRuns: Record<string, SwarmRunStatus>;
 
   sseStatus: "disconnected" | "connected" | "reconnecting";
@@ -45,6 +88,10 @@ interface AgentState {
     update: Partial<ToolCallEntry>,
   ) => void;
   updateOldestRunningToolCall: (tool: string, update: Partial<ToolCallEntry>) => void;
+  startActivity: (attemptId: string, startedAt?: number) => void;
+  setActivityAttemptId: (attemptId: string) => void;
+  setActivityState: (state: ActivityState, at?: number) => void;
+  clearActivity: () => void;
   upsertSwarmStatus: (status: SwarmRunStatus) => void;
   updateSwarmStatus: (runId: string, updater: (status: SwarmRunStatus) => SwarmRunStatus) => void;
 
@@ -73,6 +120,7 @@ export const useAgentStore = create<AgentState>((set) => ({
   streamingText: "",
   streamingSessionId: null,
   toolCalls: [],
+  activity: null,
   swarmRuns: {},
   sseStatus: "disconnected",
   sseRetryAttempt: 0,
@@ -113,11 +161,27 @@ export const useAgentStore = create<AgentState>((set) => ({
     }),
 
   addToolCall: (entry) =>
-    set((s) => ({ toolCalls: [...s.toolCalls, entry] })),
+    set((s) => {
+      const toolCalls = [...s.toolCalls, entry];
+      return {
+        toolCalls,
+        activity: s.activity ? {
+          ...s.activity,
+          state: "working",
+          verb: deriveActivityVerb(entry.tool),
+          steps: toolCalls,
+          endedAt: undefined,
+        } : null,
+      };
+    }),
   updateToolCall: (id, update) =>
-    set((s) => ({
-      toolCalls: s.toolCalls.map((tc) => tc.id === id ? { ...tc, ...update } : tc),
-    })),
+    set((s) => {
+      const toolCalls = s.toolCalls.map((tc) => tc.id === id ? { ...tc, ...update } : tc);
+      return {
+        toolCalls,
+        activity: s.activity ? { ...s.activity, steps: toolCalls } : null,
+      };
+    }),
   updateRunningToolCall: (callId, tool, update) =>
     set((s) => {
       const idx = callId
@@ -130,7 +194,10 @@ export const useAgentStore = create<AgentState>((set) => ({
       if (idx < 0) return {};
       const toolCalls = [...s.toolCalls];
       toolCalls[idx] = { ...toolCalls[idx], ...update };
-      return { toolCalls };
+      return {
+        toolCalls,
+        activity: s.activity ? { ...s.activity, steps: toolCalls } : null,
+      };
     }),
   updateOldestRunningToolCall: (tool, update) =>
     set((s) => {
@@ -144,8 +211,39 @@ export const useAgentStore = create<AgentState>((set) => ({
       if (idx < 0) return {};
       const toolCalls = [...s.toolCalls];
       toolCalls[idx] = { ...toolCalls[idx], ...update };
-      return { toolCalls };
+      return {
+        toolCalls,
+        activity: s.activity ? { ...s.activity, steps: toolCalls } : null,
+      };
     }),
+  startActivity: (attemptId, startedAt = Date.now()) =>
+    set({
+      activity: {
+        attemptId,
+        state: "thinking",
+        verb: "working",
+        steps: [],
+        startedAt,
+      },
+      toolCalls: [],
+    }),
+  setActivityAttemptId: (attemptId) =>
+    set((s) => ({
+      activity: s.activity ? { ...s.activity, attemptId } : null,
+    })),
+  setActivityState: (state, at = Date.now()) =>
+    set((s) => {
+      if (!s.activity) return {};
+      const terminal = ["stopped", "timeout", "failed", "done"].includes(state);
+      return {
+        activity: {
+          ...s.activity,
+          state,
+          endedAt: terminal ? at : undefined,
+        },
+      };
+    }),
+  clearActivity: () => set({ activity: null }),
   upsertSwarmStatus: (swarmStatus) =>
     set((s) => {
       const idx = s.messages.findIndex((m) => m.type === "swarm_status" && m.swarmRunId === swarmStatus.runId);
@@ -209,6 +307,7 @@ export const useAgentStore = create<AgentState>((set) => ({
       status: "idle",
       streamingText: "",
       toolCalls: [],
+      activity: null,
       swarmRuns: msgs ? (_swarmSessionCache.get(sid) ?? {}) : {},
       sessionLoading: !msgs,
       // Preserve streamingSessionId so the sidebar spinner stays visible
@@ -223,7 +322,7 @@ export const useAgentStore = create<AgentState>((set) => ({
     _id = 0;
     set({
       messages: [], status: "idle", streamingText: "",
-      sessionId: null, toolCalls: [], swarmRuns: {}, sessionLoading: false,
+      sessionId: null, toolCalls: [], activity: null, swarmRuns: {}, sessionLoading: false,
       streamingSessionId: null,
     });
   },

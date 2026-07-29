@@ -360,8 +360,8 @@ export function Compare() {
           <EquityChartOverlay
             leftCurve={leftCurve}
             rightCurve={rightCurve}
-            leftLabel={leftRun ? truncatePrompt(leftRun.prompt, 20) || "Baseline" : "Baseline"}
-            rightLabel={rightRun ? truncatePrompt(rightRun.prompt, 20) || "Compare" : "Compare"}
+            leftLabel={leftRun ? truncatePrompt(leftRun.prompt, 20) || t("compare.baseline") : t("compare.baseline")}
+            rightLabel={rightRun ? truncatePrompt(rightRun.prompt, 20) || t("compare.compare") : t("compare.compare")}
           />
         </div>
       )}
@@ -393,9 +393,7 @@ export function Compare() {
                         <>
                           <span aria-hidden="true">{diff.glyph} </span>
                           <span className="sr-only">
-                            {t(`compare.${diff.verdict}`, {
-                              defaultValue: diff.verdict === "better" ? "Better" : "Worse",
-                            })}
+                            {t(`compare.${diff.verdict}`)}
                             {": "}
                           </span>
                         </>
