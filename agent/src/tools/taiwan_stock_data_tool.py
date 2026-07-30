@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import math
-import os
 import re
 import sqlite3
 from contextlib import closing
@@ -14,8 +13,18 @@ from pathlib import Path
 from typing import Any
 
 from src.agent.tools import BaseTool
+from src.config.accessor import get_env_config
 
 DEFAULT_DB_PATH = "/data/tw-stock/latest.db"
+
+
+def _configured_db_path() -> str:
+    """Return the configured snapshot path, or the container default.
+
+    Returns:
+        ``VIBE_TW_STOCK_DB`` when set, otherwise :data:`DEFAULT_DB_PATH`.
+    """
+    return get_env_config().data.vibe_tw_stock_db.strip() or DEFAULT_DB_PATH
 STOCK_ID_PATTERN = re.compile(r"^\d{4}$")
 MAX_QUERY_STOCKS = 50
 MAX_RESULT_ROWS = 200
@@ -344,14 +353,7 @@ class TaiwanStockDataTool(BaseTool):
             db_path: Snapshot path. Defaults to ``VIBE_TW_STOCK_DB``, then to
                 ``DEFAULT_DB_PATH``.
         """
-        configured = (
-            str(db_path)
-            if db_path is not None
-            else os.getenv(
-                "VIBE_TW_STOCK_DB",
-                DEFAULT_DB_PATH,
-            )
-        )
+        configured = str(db_path) if db_path is not None else _configured_db_path()
         self.db_path = Path(configured).expanduser()
 
     @classmethod
@@ -363,12 +365,7 @@ class TaiwanStockDataTool(BaseTool):
             carries every table and column this tool queries. Registering on a
             merely-present file would defer the failure to a user query.
         """
-        path = Path(
-            os.getenv(
-                "VIBE_TW_STOCK_DB",
-                DEFAULT_DB_PATH,
-            )
-        ).expanduser()
+        path = Path(_configured_db_path()).expanduser()
 
         if not path.is_file():
             return False
