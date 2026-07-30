@@ -325,7 +325,10 @@ def redact_payload(obj: Any, *, sink: str = ARGUMENTS_SINK) -> Any:
         }
     if isinstance(obj, list):
         return [redact_payload(item, sink=sink) for item in obj]
-    if sink == RESULT_SINK and isinstance(obj, str):
+    if isinstance(obj, str):
+        # Both sinks: key-based classification cannot see a credential embedded
+        # inside an otherwise-benign value, e.g. a bearer token in a shell
+        # command argument or in a broker error string bound for the ledger.
         return redact_text(obj)
     return obj
 
@@ -400,6 +403,22 @@ def _sub_credential_pair(match: re.Match[str]) -> str:
     )
 
 
+#: Credential formats recognised WITHOUT a key label. Key-based and
+#: ``key=value`` matching both miss a bare token pasted into shell output or an
+#: error string, so the well-known issuer prefixes are matched on shape. Each
+#: alternative is anchored and length-bounded so ordinary prose cannot match.
+_TEXT_TOKEN_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_-])("
+    r"sk-[A-Za-z0-9_-]{20,}"                 # OpenAI / Anthropic style
+    r"|gh[pousr]_[A-Za-z0-9]{30,}"           # GitHub PAT family
+    r"|xox[baprs]-[A-Za-z0-9-]{10,}"         # Slack
+    r"|AKIA[0-9A-Z]{16}"                     # AWS access key id
+    r"|pypi-[A-Za-z0-9_-]{16,}"              # PyPI upload token
+    r"|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}"  # JWT
+    r")(?![A-Za-z0-9_-])"
+)
+
+
 def redact_text(text: object) -> str:
     """Scrub credential-shaped values from a free-form string.
 
@@ -425,7 +444,9 @@ def redact_text(text: object) -> str:
     if not s:
         return s
     s = _TEXT_BEARER_PATTERN.sub(r"\g<scheme> " + _REDACTED, s)
-    return _TEXT_KV_PATTERN.sub(_sub_credential_pair, s)
+    s = _TEXT_KV_PATTERN.sub(_sub_credential_pair, s)
+    # Bare tokens with no key label in front of them.
+    return _TEXT_TOKEN_PATTERN.sub(_REDACTED, s)
 
 
 def redact_tool_result(result: object) -> str:

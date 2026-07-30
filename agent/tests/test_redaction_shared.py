@@ -25,6 +25,7 @@ from src.tools.redaction import (
     RESULT_SINK,
     is_sensitive_arg,
     redact_payload,
+    redact_text,
     redact_tool_result,
 )
 
@@ -420,3 +421,28 @@ def test_write_file_content_argument_never_lands_in_the_trace(tmp_path: Path) ->
     call_events = [data for event_type, data in events if event_type == "tool_call"]
     assert call_events, "expected a tool_call event"
     assert _WRITE_FILE_DOC_SECRET not in json.dumps(call_events, default=str)
+
+
+def test_arguments_sink_scrubs_credentials_embedded_in_benign_values() -> None:
+    """Key-based classification cannot see a token inside a shell command."""
+    args = {"command": 'curl -H "Authorization: Bearer arg-secret-123" https://x'}
+    out = redact_payload(args)
+    assert "arg-secret-123" not in out["command"]
+    assert "curl" in out["command"] and "https://x" in out["command"]
+
+
+def test_bare_issuer_tokens_are_scrubbed_without_a_key_label() -> None:
+    """A token pasted with no ``key=`` in front of it must still go."""
+    for token in (
+        "sk-proj-abcdefghijklmnopqrstuvwxyz012345",
+        "ghp_" + "a" * 36,
+        "xoxb-1234567890-abcdefghij",
+        "AKIAIOSFODNN7EXAMPLE",
+    ):
+        assert token not in redact_text(f"leaked {token} here")
+
+
+def test_bare_token_scrub_leaves_ordinary_output_alone() -> None:
+    """Short sk-prefixed words and usage counters are not credentials."""
+    text = "tokens: 1204 in / 318 out, sk-ok, account 12345"
+    assert redact_text(text) == text

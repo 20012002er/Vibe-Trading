@@ -989,7 +989,7 @@ class AgentLoop:
         final_reason: str | None = None
         if self._cancel_event.is_set():
             final_reason = "cancelled by user"
-            state_store.mark_failure(run_dir, final_reason)
+            state_store.mark_cancelled(run_dir, final_reason)
             final_status = "cancelled"
         elif content_filter_circuit_breaker:
             final_reason = (

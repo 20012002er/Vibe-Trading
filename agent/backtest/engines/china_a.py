@@ -154,7 +154,11 @@ def _blocked_by_limit(
     if band is None:
         return False
     lower, upper = band
-    fill = engine.prospective_fill_price(bar, direction)
+    # BaseEngine books a close with the OPPOSITE of the position's direction,
+    # so slippage moves the price the other way. Checking the raw open here
+    # would approve a fill that is then booked outside the band.
+    fill_direction = -(position_direction or 1) if direction == 0 else direction
+    fill = engine.prospective_fill_price(bar, fill_direction)
     if fill is None:
         return False
 

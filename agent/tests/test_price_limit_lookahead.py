@@ -151,3 +151,39 @@ def test_futures_prefer_pre_settle_over_pre_close() -> None:
     # 132 and would wrongly allow this open.
     bar = pd.Series({"open": 110.0, "close": 101.0, "pre_settle": 100.0, "pre_close": 120.0})
     assert engine.can_execute("IF2406.CFFEX", 1, bar) is False
+
+
+# --------------------------------------------------------------------------- #
+# The booked price, not the raw open, must be the one tested
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("engine, symbol, band", _equity_cases())
+def test_close_is_judged_on_the_price_actually_booked(engine, symbol, band) -> None:
+    """A close is booked with the opposite of the position direction.
+
+    Testing the raw open would approve a fill whose booked sell price, after
+    slippage, lands outside the band.
+    """
+    engine.positions[symbol] = Position(symbol, 1, _BASE, pd.Timestamp("2025-06-09"), 100.0)
+    lower = _BASE * (1 - band)
+    just_inside = lower * 1.0005          # inside the band before slippage...
+    booked = engine.apply_slippage(just_inside, -1)   # ...outside it after
+    assert booked < lower, "fixture no longer exercises the slippage gap"
+    bar = _bar(open_=just_inside, close=_BASE * 0.99)
+    bar["trade_date"] = pd.Timestamp("2025-06-10")
+    assert engine.can_execute(symbol, 0, bar) is False
+
+
+def test_closing_a_short_is_judged_as_a_buy_after_slippage() -> None:
+    """Covering a short is booked as a buy, so slippage pushes it UP."""
+    engine = ChinaFuturesEngine({})
+    engine.positions["IF2406.CFFEX"] = Position(
+        "IF2406.CFFEX", -1, _BASE, pd.Timestamp("2025-06-09"), 1.0,
+    )
+    upper = _BASE * 1.10
+    just_inside = upper * 0.9999
+    booked = engine.apply_slippage(just_inside, 1)
+    assert booked > upper, "fixture no longer exercises the slippage gap"
+    bar = _bar(open_=just_inside, close=_BASE * 1.01, base_field="pre_settle")
+    assert engine.can_execute("IF2406.CFFEX", 0, bar) is False

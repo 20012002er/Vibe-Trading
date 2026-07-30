@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from urllib.parse import urlparse
 import re
 from collections.abc import Sequence
 from importlib import import_module
@@ -718,7 +719,23 @@ def _supports_top_level_reasoning_effort(provider: str, caps_name: str) -> bool:
         the capability name check drops model-inferred providers (e.g. provider
         ``openai`` with a ``deepseek-*`` model resolves to DeepSeek).
     """
-    return caps_name == "openai" and provider.strip().lower() in {"", "openai"}
+    if caps_name != "openai" or provider.strip().lower() not in {"", "openai"}:
+        return False
+    # A base-URL override points the OpenAI client at some other gateway
+    # (Ollama, LiteLLM, a corporate proxy). Those speak the OpenAI wire format
+    # but need not accept this field, so the label alone is not enough.
+    try:
+        base_url = (
+            get_llm_credentials("openai", get_env_config().llm.langchain_model_name)
+            .get("base_url")
+            or ""
+        ).strip()
+    except Exception:  # noqa: BLE001 - a credential lookup must not break the check
+        return False
+    if not base_url:
+        return True
+    host = urlparse(base_url if "//" in base_url else f"https://{base_url}").hostname or ""
+    return host.lower() in {"api.openai.com", "openai.com"}
 
 
 def provider_diagnostics() -> dict[str, Any]:

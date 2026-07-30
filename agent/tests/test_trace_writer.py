@@ -265,3 +265,45 @@ def test_record_never_references_missing_sidecar_on_crash(
 
     assert _raw_entries(tmp_path) == []
     assert list((tmp_path / "tool-results").glob("*.txt")) == []
+
+
+def test_sidecar_survives_a_partial_write(tmp_path, monkeypatch):
+    """os.write can write fewer bytes than requested; the blob must still be whole."""
+    import os as _os
+
+    real_write = _os.write
+    state = {"first": True}
+
+    def _short_write(fd, data):
+        if state["first"] and len(data) > 16:
+            state["first"] = False
+            return real_write(fd, data[:16])
+        return real_write(fd, data)
+
+    monkeypatch.setattr(trace_mod.os, "write", _short_write)
+
+    writer = TraceWriter(tmp_path)
+    body = "x" * 5000
+    entry: dict = {}
+    writer._attach_text_field(entry, field="result", value=body, offload_kind="result",
+                              threshold=10, offload_dir_name="results")
+    writer.write(entry)
+
+    sidecar = tmp_path / entry["result_path"]
+    assert sidecar.read_text(encoding="utf-8") == body
+
+
+def test_failed_sidecar_write_leaves_no_temp_file(tmp_path, monkeypatch):
+    """A write error must not strand a half-written temp blob."""
+
+    def _boom(fd, data):
+        raise OSError("disk exploded")
+
+    monkeypatch.setattr(trace_mod.os, "write", _boom)
+    writer = TraceWriter(tmp_path)
+    with pytest.raises(OSError):
+        writer._attach_text_field({}, field="result", value="y" * 5000,
+                                  offload_kind="result", threshold=10,
+                                  offload_dir_name="results")
+    leftovers = list((tmp_path / "results").glob(".*tmp"))
+    assert leftovers == []

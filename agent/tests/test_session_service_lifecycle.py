@@ -246,3 +246,70 @@ def test_normal_history_is_untouched():
     ]
     history = SessionService._convert_messages_to_history(messages)
     assert [m["content"] for m in history] == ["first", "second"]
+
+
+def test_claim_is_released_when_pre_run_bookkeeping_fails(tmp_path, monkeypatch):
+    """A failure before the agent even starts must not brick the session.
+
+    mark_running/update_attempt/emit used to run outside the try, so a disk
+    error there stranded the claim and every later send returned 409.
+    """
+
+    async def scenario() -> None:
+        service = _service(tmp_path, monkeypatch)
+        session = service.create_session(title="bookkeeping")
+        _stub_agent(service, monkeypatch, {"status": "success", "content": "ok"})
+
+        original = service.store.update_attempt
+        calls = {"n": 0}
+
+        def _fail_first(attempt):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise OSError("no space left on device")
+            return original(attempt)
+
+        monkeypatch.setattr(service.store, "update_attempt", _fail_first)
+
+        await service.send_message(session.session_id, "one")
+        for _ in range(100):
+            await asyncio.sleep(0.01)
+            if session.session_id not in service._inflight:
+                break
+        assert session.session_id not in service._inflight
+        # And the session is usable again.
+        monkeypatch.setattr(service.store, "update_attempt", original)
+        assert await service.send_message(session.session_id, "two")
+
+    asyncio.run(scenario())
+
+
+def test_cancel_before_the_agent_loop_exists_releases_the_claim(tmp_path, monkeypatch):
+    """cancel_current must work while the registry is still being built.
+
+    _active_loops is only populated once construction finishes, so a run that
+    hangs earlier (e.g. MCP discovery) previously held the claim forever.
+    """
+
+    async def scenario() -> None:
+        service = _service(tmp_path, monkeypatch)
+        session = service.create_session(title="hung")
+        never = asyncio.Event()
+        _stub_agent(service, monkeypatch, {"status": "success"}, gate=never)
+
+        await service.send_message(session.session_id, "one")
+        await asyncio.sleep(0.02)
+        assert session.session_id in service._inflight
+        assert service.cancel_current(session.session_id) is True
+
+        for _ in range(100):
+            await asyncio.sleep(0.01)
+            if session.session_id not in service._inflight:
+                break
+        assert session.session_id not in service._inflight
+
+        stored = service.store.get_session(session.session_id)
+        attempt = service.store.get_attempt(session.session_id, stored.last_attempt_id)
+        assert attempt.status == AttemptStatus.CANCELLED
+
+    asyncio.run(scenario())

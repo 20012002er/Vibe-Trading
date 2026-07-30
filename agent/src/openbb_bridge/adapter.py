@@ -48,7 +48,7 @@ _ROLE_AI = "ai"
 # replayed as turns; their payload is folded into the context prefix instead.
 _ROLE_TO_VIBE = {_ROLE_HUMAN: "user", _ROLE_AI: "assistant"}
 
-_TERMINAL_EVENTS = {"attempt.completed", "attempt.failed"}
+_TERMINAL_EVENTS = {"attempt.completed", "attempt.failed", "attempt.cancelled"}
 
 # Session titles surface in the Vibe-Trading UI; keep them short but identifiable.
 _TITLE_MAX_CHARS = 48
@@ -183,6 +183,14 @@ class OpenBBQueryAdapter:
             yield reasoning_step(message=f"Run failed: {error}", event_type="ERROR")
             if not saw_text:
                 yield message_chunk(text=f"The agent run failed: {error}")
+            return
+
+        if event_type == "attempt.cancelled":
+            # A stop is terminal too; without this the stream would keep
+            # emitting heartbeats until the client gave up.
+            yield reasoning_step(message="Run cancelled.", event_type="WARNING")
+            if not saw_text:
+                yield message_chunk(text="The agent run was cancelled.")
             return
 
         # attempt.completed: only send the summary if nothing was streamed.

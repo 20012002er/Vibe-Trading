@@ -76,6 +76,12 @@ class SessionService:
         # concurrency gate, so in-flight sessions are tracked separately and
         # reserved synchronously in send_message.
         self._active_loops: Dict[str, "AgentLoop"] = {}
+        # Task handles are kept from the moment the run is scheduled, so a run
+        # still building its registry can be cancelled. _active_loops only
+        # exists once construction finished, which is far too late to be the
+        # only cancellation route: a hung discovery would otherwise hold the
+        # claim forever and lock the session behind 409.
+        self._active_tasks: Dict[str, "asyncio.Task"] = {}
         self._inflight: set[str] = set()
         self._inflight_lock = threading.Lock()
         self._search_index = get_shared_index()
@@ -188,7 +194,10 @@ class SessionService:
             self.store.update_session(session)
             self.event_bus.emit(session_id, "attempt.created", {"attempt_id": attempt.attempt_id, "prompt": content})
 
-            asyncio.create_task(self._run_attempt(session, attempt, include_shell_tools=include_shell_tools))
+            task = asyncio.create_task(
+                self._run_attempt(session, attempt, include_shell_tools=include_shell_tools)
+            )
+            self._active_tasks[session_id] = task
             # _run_attempt now owns the claim and releases it in its finally.
             handed_off = True
             return {"message_id": message.message_id, "attempt_id": attempt.attempt_id}
@@ -210,18 +219,29 @@ class SessionService:
             Whether cancellation succeeded. True means an active loop existed and received a cancel signal.
         """
         loop = self._active_loops.get(session_id)
-        if loop is None:
-            return False
-        loop.cancel()
-        return True
+        if loop is not None:
+            loop.cancel()
+            return True
+        # No loop yet: the run is still building its registry. Cancel the task
+        # itself so the claim is released instead of stranding the session.
+        task = self._active_tasks.get(session_id)
+        if task is not None and not task.done():
+            task.cancel()
+            return True
+        return False
 
     async def _run_attempt(self, session: Session, attempt: Attempt, *, include_shell_tools: bool = False) -> None:
-        """Execute an Attempt in the background."""
-        attempt.mark_running()
-        self.store.update_attempt(attempt)
-        self.event_bus.emit(session.session_id, "attempt.started", {"attempt_id": attempt.attempt_id})
+        """Execute an Attempt in the background.
 
+        The whole body runs under try/finally: this coroutine owns the
+        in-flight claim taken in :meth:`send_message`, and a failure anywhere —
+        including in the pre-run bookkeeping below — must not leave the session
+        permanently busy.
+        """
         try:
+            attempt.mark_running()
+            self.store.update_attempt(attempt)
+            self.event_bus.emit(session.session_id, "attempt.started", {"attempt_id": attempt.attempt_id})
             messages = self.store.get_messages(session.session_id)
             result = await self._run_with_agent(
                 attempt,
@@ -273,12 +293,25 @@ class SessionService:
                  "summary": attempt.summary, "error": attempt.error, "run_dir": attempt.run_dir},
             )
 
+        except asyncio.CancelledError:
+            # cancel_current() cancels this task when the run has not reached
+            # its AgentLoop yet. CancelledError is a BaseException, so it would
+            # slip past the handler below and leave the attempt stuck RUNNING.
+            attempt.mark_cancelled(reason="cancelled by user")
+            self.store.update_attempt(attempt)
+            self.event_bus.emit(
+                session.session_id,
+                "attempt.cancelled",
+                {"attempt_id": attempt.attempt_id, "status": attempt.status.value},
+            )
+            raise
         except Exception as exc:
             attempt.mark_failed(error=str(exc))
             self.store.update_attempt(attempt)
             self.event_bus.emit(session.session_id, "attempt.failed", {"attempt_id": attempt.attempt_id, "error": str(exc)})
         finally:
             # The only release path for the claim taken in send_message.
+            self._active_tasks.pop(session.session_id, None)
             self._release_session(session.session_id)
 
     async def _run_with_agent(

@@ -217,29 +217,51 @@ class TraceWriter:
         entry[f"{field}_size"] = len(value)
 
     def _write_sidecar_durable(self, path: Path, value: str) -> None:
-        """Atomically and durably write a sidecar blob.
+        """Atomically write a sidecar blob, durably where the filesystem allows.
 
-        Write sequence: temp file in same dir -> fsync -> ``os.replace`` ->
-        parent-directory fsync. A crash at any step leaves either no sidecar
-        or a complete one, never a partial write under the final name.
+        Write sequence: temp file in the same directory -> write every byte ->
+        fsync -> ``os.replace`` -> parent-directory fsync. The rename is what
+        makes it atomic: a crash leaves either no sidecar or a complete one,
+        never a partial write under the final name. Because the blob is fully
+        renamed into place before the caller writes the record that points at
+        it, a record never references a sidecar that is not on disk.
+
+        Durability against a HOST crash additionally needs fsync. Where fsync
+        is unsupported the error is logged once and the write still completes:
+        the sidecar is present and readable, only its survival across a power
+        loss is not guaranteed. Failing the run instead would lose the trace
+        outright, which is the worse outcome for a diagnostic artifact.
 
         Args:
             path: Final sidecar path.
             value: Full text to persist.
 
         Raises:
-            OSError: When the temp file cannot be written or renamed. The
+            OSError: When the blob cannot be written or renamed at all. The
                 caller must not write the referencing record in that case.
         """
         tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         try:
-            os.write(fd, value.encode("utf-8"))
+            payload = value.encode("utf-8")
+            written = 0
+            # os.write may write fewer bytes than requested; a single call can
+            # silently truncate a large sidecar.
+            while written < len(payload):
+                written += os.write(fd, payload[written:])
             try:
                 os.fsync(fd)
             except OSError as exc:
                 self._warn_fsync_failure(exc, tmp)
-        finally:
+        except BaseException:
+            os.close(fd)
+            # Never leave a half-written temp file behind for the next run.
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+        else:
             os.close(fd)
         os.replace(tmp, path)
         self._fsync_dir(path.parent)
