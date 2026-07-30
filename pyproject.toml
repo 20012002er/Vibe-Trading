@@ -121,6 +121,11 @@ openbb = [
     # when this import succeeds, so a base install stays unaffected.
     "openbb-ai>=2.0.0,<3",
 ]
+krx = [
+    # Free, no-auth Korea (KRX: KOSPI/KOSDAQ) EOD OHLCV. Without this extra
+    # the kr_equity chain falls back to yahoo/yfinance (.KS/.KQ suffixes).
+    "pykrx>=1.0.45",
+]
 ashare = [
     # Free, no-auth A-share source over BaoStock's TCP protocol; bypasses the
     # HTTP CDN IP blocks that affect eastmoney-backed sources. The Tencent

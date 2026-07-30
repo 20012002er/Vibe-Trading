@@ -699,6 +699,8 @@
       "equity_cn": "중국 A주",
       "equity_us": "미국 주식",
       "equity_hk": "홍콩 주식",
+      "equity_in": "인도 주식",
+      "equity_kr": "한국 주식",
       "crypto": "암호화폐",
       "futures": "선물"
     },

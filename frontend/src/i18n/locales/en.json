@@ -704,6 +704,8 @@
       "equity_cn": "China A-Shares",
       "equity_us": "US Equities",
       "equity_hk": "HK Equities",
+      "equity_in": "India Equities",
+      "equity_kr": "Korea Equities",
       "crypto": "Crypto",
       "futures": "Futures"
     },

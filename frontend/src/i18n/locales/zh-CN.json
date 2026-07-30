@@ -699,6 +699,8 @@
       "equity_cn": "A 股",
       "equity_us": "美股",
       "equity_hk": "港股",
+      "equity_in": "印度股票",
+      "equity_kr": "韩国股票",
       "crypto": "加密货币",
       "futures": "期货"
     },

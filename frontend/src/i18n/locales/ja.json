@@ -699,6 +699,8 @@
       "equity_cn": "中国 A 株",
       "equity_us": "米国株式",
       "equity_hk": "香港株式",
+      "equity_in": "インド株式",
+      "equity_kr": "韓国株式",
       "crypto": "暗号資産",
       "futures": "先物"
     },
