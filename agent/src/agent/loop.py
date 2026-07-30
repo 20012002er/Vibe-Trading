@@ -702,6 +702,7 @@ class AgentLoop:
                 # Streaming output + collect thinking text
                 thinking_chunks: List[str] = []
                 reasoning_chars = 0
+                reasoning_tail = ""
                 last_reasoning_emit: float | None = None
 
                 def _on_text_chunk(delta: str) -> None:
@@ -714,8 +715,12 @@ class AgentLoop:
                     # and evicts tool_call/text_delta events. The first chunk
                     # of each iteration always emits immediately so the UI
                     # flips to "Reasoning…" without delay.
-                    nonlocal reasoning_chars, last_reasoning_emit
+                    nonlocal reasoning_chars, reasoning_tail, last_reasoning_emit
                     reasoning_chars += len(delta)
+                    # Rolling tail rides the already-throttled emit so the UI
+                    # can whisper the current thought; a bounded window keeps
+                    # replay-buffer pressure flat regardless of trace length.
+                    reasoning_tail = (reasoning_tail + delta)[-600:]
                     now = _time.monotonic()
                     if (
                         last_reasoning_emit is not None
@@ -725,7 +730,7 @@ class AgentLoop:
                     last_reasoning_emit = now
                     self._emit(
                         "reasoning_delta",
-                        {"iter": current_iter, "chars": reasoning_chars},
+                        {"iter": current_iter, "chars": reasoning_chars, "tail": reasoning_tail},
                     )
 
                 # On last iteration, drop tool definitions to force text output

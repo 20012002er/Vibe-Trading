@@ -24,6 +24,8 @@ import type { AgentActivity } from "@/stores/agent";
 
 interface ActivityLineProps {
   activity: AgentActivity;
+  /** Live rolling reasoning excerpt — only supplied for the in-flight attempt. */
+  reasoningTail?: string;
   onContinue?: () => void;
   onReattach?: () => void;
 }
@@ -59,6 +61,7 @@ function StateIcon({ state }: { state: AgentActivity["state"] }): JSX.Element {
 /** The single live and historical status surface for one agent attempt. */
 export const ActivityLine = memo(function ActivityLine({
   activity,
+  reasoningTail,
   onContinue,
   onReattach,
 }: ActivityLineProps): JSX.Element {
@@ -159,6 +162,15 @@ export const ActivityLine = memo(function ActivityLine({
       </button>
 
       <div id={detailsId} hidden={!expanded}>
+        {/* Live reasoning whisper — DeepTutor-style sub-trace of the current
+            thought; disappears once the attempt leaves its active states. */}
+        {isActive && reasoningTail && (
+          <div className="border-t border-border/30 px-3 py-2" aria-hidden="true">
+            <p className="line-clamp-3 border-s-2 border-border/40 ps-2 font-serif text-xs italic leading-relaxed text-muted-foreground/80">
+              {reasoningTail}
+            </p>
+          </div>
+        )}
         {activity.steps.length > 0 && (
           <div className="border-t border-border/30 px-3 py-2">
             <ToolProgressIndicator toolCalls={activity.steps} />

@@ -242,6 +242,7 @@ export function Agent() {
   const status = useAgentStore(s => s.status);
   const sessionId = useAgentStore(s => s.sessionId);
   const activity = useAgentStore(s => s.activity);
+  const reasoningTail = useAgentStore(s => s.reasoningTail);
   const swarmRuns = useAgentStore(s => s.swarmRuns);
   const sessionLoading = useAgentStore(s => s.sessionLoading);
   const previousStatusRef = useRef(status);
@@ -648,6 +649,8 @@ export function Agent() {
         touch();
         replayAttemptSeenRef.current = true;
         if (!identifyActivity(d, "thinking")) return;
+        // The backend sends a bounded rolling tail — replace, never append.
+        act().setReasoningTail(String(d.tail ?? ""));
         queueStreamUpdate("", true);
         if (act().status !== "streaming") act().setStatus("streaming");
       },
@@ -830,6 +833,14 @@ export function Agent() {
         const finalAnswer = summary.trim() ? summary : streamedAnswer;
         if (finalAnswer) {
           s.addMessage({ id: "", type: "answer", content: finalAnswer, timestamp: Date.now() });
+        }
+
+        // First completed exchange → ask the backend for a Codex-style
+        // summary title, then nudge the sidebar to re-list sessions.
+        if (act().messages.filter((message) => message.type === "user").length === 1) {
+          api.autoTitleSession(sid)
+            .then(() => window.dispatchEvent(new Event("vibe:sessions-refresh")))
+            .catch(() => {});
         }
 
         // Detect Shadow Account id if render_shadow_report fired successfully this turn
@@ -1616,7 +1627,7 @@ export function Agent() {
             <div className="flex gap-3 msg-enter">
               <AgentAvatar />
               <div className="flex-1 min-w-0 space-y-2">
-                {activity && <ActivityLine activity={activity} />}
+                {activity && <ActivityLine activity={activity} reasoningTail={reasoningTail} />}
                 {streamingText && (
                   <div aria-live="polite" aria-atomic="false">
                     <MarkdownContent content={streamingText} streaming showCursor />

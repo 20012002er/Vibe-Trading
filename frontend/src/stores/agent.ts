@@ -62,6 +62,8 @@ interface AgentState {
   sessionId: string | null;
   status: "idle" | "streaming" | "error";
   streamingText: string;
+  /** Rolling tail of the model's live reasoning trace (bounded server-side). */
+  reasoningTail: string;
 
   /** The session currently streaming on the backend. Survives switchSession
    *  so the sidebar spinner persists when the user navigates away. */
@@ -98,6 +100,7 @@ interface AgentState {
   cacheSession: (sid: string, msgs: StoredAgentMessage[]) => void;
   getCachedSession: (sid: string) => StoredAgentMessage[] | undefined;
 
+  setReasoningTail: (tail: string) => void;
   clearStreaming: () => void;
   clearStreamingSession: (sid: string) => void;
 
@@ -118,6 +121,7 @@ export const useAgentStore = create<AgentState>((set) => ({
   sessionId: null,
   status: "idle",
   streamingText: "",
+  reasoningTail: "",
   streamingSessionId: null,
   toolCalls: [],
   activity: null,
@@ -292,7 +296,8 @@ export const useAgentStore = create<AgentState>((set) => ({
     }),
   getCachedSession: (sid) => _sessionCache.get(sid),
 
-  clearStreaming: () => set({ streamingText: "" }),
+  setReasoningTail: (reasoningTail) => set({ reasoningTail }),
+  clearStreaming: () => set({ streamingText: "", reasoningTail: "" }),
   clearStreamingSession: (sid) =>
     set((s) => s.streamingSessionId === sid ? { streamingSessionId: null } : {}),
 
@@ -306,6 +311,7 @@ export const useAgentStore = create<AgentState>((set) => ({
       messages: msgs || [],
       status: "idle",
       streamingText: "",
+      reasoningTail: "",
       toolCalls: [],
       activity: null,
       swarmRuns: msgs ? (_swarmSessionCache.get(sid) ?? {}) : {},
@@ -321,7 +327,7 @@ export const useAgentStore = create<AgentState>((set) => ({
   reset: () => {
     _id = 0;
     set({
-      messages: [], status: "idle", streamingText: "",
+      messages: [], status: "idle", streamingText: "", reasoningTail: "",
       sessionId: null, toolCalls: [], activity: null, swarmRuns: {}, sessionLoading: false,
       streamingSessionId: null,
     });

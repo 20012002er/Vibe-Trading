@@ -64,6 +64,14 @@ export function Layout() {
   const isAgentPage = pathname.startsWith("/agent");
   useEffect(() => { loadSessions(); }, [isAgentPage, activeSessionId]);
 
+  // Re-list after out-of-band title changes (e.g. LLM auto-titling on the
+  // first completed exchange).
+  useEffect(() => {
+    const refresh = () => loadSessions();
+    window.addEventListener("vibe:sessions-refresh", refresh);
+    return () => window.removeEventListener("vibe:sessions-refresh", refresh);
+  }, []);
+
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
