@@ -36,9 +36,45 @@ function calculateEta(tc: ToolCallEntry, previous?: EtaSample): number | null {
 }
 
 function formatStepElapsed(seconds: number): string {
-  const wholeSeconds = Math.max(0, Math.floor(seconds));
+  if (seconds < 0.05) return "<0.1s";
+  if (seconds < 1) return `${seconds.toFixed(1)}s`;
+  const wholeSeconds = Math.floor(seconds);
   if (wholeSeconds < 60) return `${wholeSeconds}s`;
   return `${Math.floor(wholeSeconds / 60)}m ${wholeSeconds % 60}s`;
+}
+
+/* ---------- Argument summary ----------
+ * The step label alone ("Browse the factor zoo") is identical for every call
+ * of the same tool; the argument summary is what tells seven such steps
+ * apart. Prefer the arguments users phrase requests in (names, symbols,
+ * queries) over incidental ones.
+ */
+const DETAIL_ARG_KEYS = [
+  "name", "skill", "skill_name", "factor", "factor_id", "alpha_id",
+  "symbol", "symbols", "code", "query", "q", "keyword", "action",
+  "path", "file", "filename", "url", "source", "id",
+];
+
+function truncateDetail(value: string, max = 42): string {
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+}
+
+function detailFor(entry: ToolCallEntry): string {
+  const args = entry.arguments ?? {};
+  for (const key of DETAIL_ARG_KEYS) {
+    const value = args[key];
+    if (typeof value === "string" && value.trim()) return truncateDetail(value.trim());
+  }
+  const fallback = Object.values(args).find(
+    (value) => typeof value === "string" && value.trim() && value.trim().length <= 60,
+  );
+  return fallback ? truncateDetail(fallback.trim()) : "";
+}
+
+function entryElapsedSeconds(entry: ToolCallEntry): number | undefined {
+  if (entry.elapsed_s != null) return entry.elapsed_s;
+  if (entry.elapsed_ms != null) return entry.elapsed_ms / 1000;
+  return undefined;
 }
 
 /* ---------- Determinate progress ring ---------- */
@@ -83,23 +119,25 @@ function ProgressRing({ current, total }: RingProps): JSX.Element {
   );
 }
 
-/* ---------- Single tool row ---------- */
+/* ---------- Single row: one tool call, or a run of successful same-tool calls ---------- */
 interface RowProps {
-  entry: ToolCallEntry;
-  stepIndex: number;
-  connector?: "branch" | "end" | "none";
+  entries: ToolCallEntry[];
   eta: number | null;
 }
 
-function ToolRow({ entry, stepIndex, connector = "none", eta }: RowProps): JSX.Element {
+function ToolRow({ entries, eta }: RowProps): JSX.Element {
   const { t } = useTranslation();
-  const progress = entry.progress;
+  const entry = entries[entries.length - 1];
+  const progress = entries.length === 1 ? entry.progress : undefined;
   const hasDeterminate = !!(progress && typeof progress.current === "number" && typeof progress.total === "number" && progress.total > 0);
   const stage = progress?.stage || "";
   const message = progress?.message || "";
-  const elapsedSeconds = entry.elapsed_s ?? (
-    entry.elapsed_ms != null ? entry.elapsed_ms / 1000 : undefined
-  );
+
+  let elapsedSeconds: number | undefined;
+  for (const item of entries) {
+    const value = entryElapsedSeconds(item);
+    if (value != null) elapsedSeconds = (elapsedSeconds ?? 0) + value;
+  }
 
   const icon = entry.status === "error"
     ? <XCircle className="h-3 w-3 text-danger shrink-0" />
@@ -110,19 +148,23 @@ function ToolRow({ entry, stepIndex, connector = "none", eta }: RowProps): JSX.E
         : <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />;
 
   const localized = localizeToolName(entry.tool);
-  const stepLabel = t("toolProgress.step" as never, { step: stepIndex, tool: localized });
+  const details = [...new Set(entries.map(detailFor).filter(Boolean))];
+  const detailText = details.slice(0, 3).join(", ") + (details.length > 3 ? ` +${details.length - 3}` : "");
 
   return (
     <div className="flex flex-col sm:flex-row sm:items-center gap-x-2 gap-y-0.5 text-xs min-w-0">
       {/* Primary row */}
       <div className="flex items-center gap-2 min-w-0">
-        {connector !== "none" && (
-          <span className="text-border/60 shrink-0 w-3 text-center" aria-hidden="true">
-            {connector === "branch" ? "├" : "└"}
-          </span>
-        )}
         {icon}
-        <span className="text-foreground truncate">{stepLabel}</span>
+        <span className="text-foreground shrink-0">
+          {localized}
+          {entries.length > 1 && (
+            <span className="text-muted-foreground"> ×{entries.length}</span>
+          )}
+        </span>
+        {detailText && (
+          <span className="min-w-0 truncate text-muted-foreground/80">{detailText}</span>
+        )}
         {elapsedSeconds != null && (
           <span
             aria-hidden="true"
@@ -174,16 +216,16 @@ export interface ToolProgressIndicatorProps {
   toolCalls: ToolCallEntry[];
 }
 
-interface IndexedToolCall {
-  entry: ToolCallEntry;
-  index: number;
-}
-
 /**
  * Expanded activity step rows.
  *
  * ActivityLine owns status, disclosure and announcements; this component is
  * deliberately only the shared row renderer so the chat has one status surface.
+ *
+ * Rows read chronologically top-to-bottom (the running call is naturally the
+ * newest, at the bottom); consecutive successful calls of the same tool
+ * coalesce into one "×N" row so repeated lookups don't become a wall of
+ * identical lines. Errors and the running call always keep their own row.
  */
 export const ToolProgressIndicator = memo(function ToolProgressIndicator({
   toolCalls,
@@ -191,24 +233,24 @@ export const ToolProgressIndicator = memo(function ToolProgressIndicator({
   const etaSamplesRef = useRef<Map<string, EtaSample>>(new Map());
 
   const { rows, running } = useMemo(() => {
-    const runningRows: IndexedToolCall[] = [];
-    const terminalRows: IndexedToolCall[] = [];
+    const rows: ToolCallEntry[][] = [];
     const running: ToolCallEntry[] = [];
 
-    toolCalls.forEach((entry, index) => {
-      const indexed = { entry, index };
-      if (entry.status === "running") {
-        running.push(entry);
-        runningRows.push(indexed);
+    for (const entry of toolCalls) {
+      if (entry.status === "running") running.push(entry);
+      const lastGroup = rows[rows.length - 1];
+      if (
+        entry.status === "ok"
+        && lastGroup
+        && lastGroup[0].status === "ok"
+        && lastGroup[0].tool === entry.tool
+      ) {
+        lastGroup.push(entry);
       } else {
-        terminalRows.push(indexed);
+        rows.push([entry]);
       }
-    });
-
-    return {
-      running,
-      rows: [...runningRows, ...terminalRows.reverse()],
-    };
+    }
+    return { rows, running };
   }, [toolCalls]);
 
   const etaById = useMemo(() => {
@@ -246,14 +288,12 @@ export const ToolProgressIndicator = memo(function ToolProgressIndicator({
   if (toolCalls.length === 0) return null;
 
   return (
-    <div className="min-w-0 space-y-1">
-      {rows.map(({ entry, index }, rowIndex) => (
+    <div className="min-w-0 space-y-1 border-s border-border/40 ps-3">
+      {rows.map((entries) => (
         <ToolRow
-          key={entry.id}
-          entry={entry}
-          stepIndex={index + 1}
-          connector={rowIndex === rows.length - 1 ? "end" : "branch"}
-          eta={etaById.get(entry.id) ?? null}
+          key={entries[0].id}
+          entries={entries}
+          eta={etaById.get(entries[entries.length - 1].id) ?? null}
         />
       ))}
     </div>

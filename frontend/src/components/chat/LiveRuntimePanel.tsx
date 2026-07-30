@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { Activity, Ban, CheckCircle2, Loader2, OctagonX } from "lucide-react";
+import { Activity, Ban, CheckCircle2, Loader2, OctagonX, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import {
   ApiError,
@@ -102,8 +102,10 @@ interface RuntimeContextValue {
   liveActive: boolean;
   liveIsHalted: boolean;
   halting: boolean;
+  resuming: boolean;
   refreshLiveStatus: () => Promise<void>;
   haltLive: () => Promise<void>;
+  resumeLive: () => Promise<void>;
 }
 
 const RuntimeContext = createContext<RuntimeContextValue | null>(null);
@@ -120,6 +122,7 @@ export const LiveRuntimePanel = memo(forwardRef<LiveRuntimePanelHandle, Props>(
     const [hasCommittedMandate, setHasCommittedMandate] = useState(false);
     const [liveHalted, setLiveHalted] = useState<LiveHalted | null>(null);
     const [halting, setHalting] = useState(false);
+    const [resuming, setResuming] = useState(false);
     const [liveStatusRefresh, setLiveStatusRefresh] = useState(0);
     const [liveStatus, setLiveStatus] = useState<LiveStatus | null>(null);
     const [liveStatusUnavailable, setLiveStatusUnavailable] = useState(false);
@@ -199,6 +202,21 @@ export const LiveRuntimePanel = memo(forwardRef<LiveRuntimePanelHandle, Props>(
       }
     }, [halting, sessionId, t]);
 
+    const resumeLive = useCallback(async () => {
+      if (resuming) return;
+      setResuming(true);
+      try {
+        await api.resumeLive(sessionId ?? undefined);
+        setLiveHalted(null);
+        setLiveStatusRefresh((value) => value + 1);
+        toast.success(t("agent.connectorResumed"));
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : t("agent.failedToResumeConnector"));
+      } finally {
+        setResuming(false);
+      }
+    }, [resuming, sessionId, t]);
+
     const liveStatusActive =
       liveStatus != null &&
       (liveStatus.global_halted ||
@@ -219,8 +237,10 @@ export const LiveRuntimePanel = memo(forwardRef<LiveRuntimePanelHandle, Props>(
       liveActive,
       liveIsHalted,
       halting,
+      resuming,
       refreshLiveStatus,
       haltLive,
+      resumeLive,
     }), [
       haltLive,
       halting,
@@ -229,6 +249,8 @@ export const LiveRuntimePanel = memo(forwardRef<LiveRuntimePanelHandle, Props>(
       liveStatus,
       liveStatusUnavailable,
       refreshLiveStatus,
+      resumeLive,
+      resuming,
     ]);
 
     return (
@@ -259,10 +281,24 @@ export function LiveRuntimeControl() {
   return (
     <div className="flex items-center gap-2 border-t border-border/60 pt-2">
       {runtime.liveIsHalted ? (
-        <span className="inline-flex items-center gap-1.5 rounded-lg bg-destructive/10 px-2.5 py-1 text-xs font-medium text-destructive">
-          <OctagonX className="h-3 w-3" />
-          {t("agent.connectorHalted")}
-        </span>
+        <>
+          <span className="inline-flex items-center gap-1.5 rounded-lg bg-destructive/10 px-2.5 py-1 text-xs font-medium text-destructive">
+            <OctagonX className="h-3 w-3" />
+            {t("agent.connectorHalted")}
+          </span>
+          <button
+            type="button"
+            onClick={runtime.resumeLive}
+            disabled={runtime.resuming}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+            title={t("agent.resumeConnectorTitle")}
+          >
+            {runtime.resuming
+              ? <Loader2 className="h-3 w-3 animate-spin" />
+              : <RotateCcw className="h-3 w-3" />}
+            {t("agent.resumeConnector")}
+          </button>
+        </>
       ) : (
         <button
           type="button"

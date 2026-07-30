@@ -18,10 +18,9 @@ describe("ConnectionBanner", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("renders the disconnected terminal state with a reload affordance", () => {
-    render(<ConnectionBanner status="disconnected" />);
-    expect(screen.getByText(/Connection lost/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
+  it("renders nothing for the idle disconnected state", () => {
+    const { container } = render(<ConnectionBanner status="disconnected" />);
+    expect(container.innerHTML).toBe("");
   });
 
   it("shows the calm reconnecting message regardless of attempt count", () => {

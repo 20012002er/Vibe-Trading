@@ -89,7 +89,7 @@ describe("ToolProgressIndicator", () => {
     expect(screen.getByText(/Read file/)).toBeInTheDocument();
   });
 
-  it("prioritizes running rows, then all terminal rows newest-first", () => {
+  it("renders rows chronologically with the running call last", () => {
     const tcs = [
       makeTc({ id: "tc-1", tool: "bash", status: "ok" }),
       makeTc({ id: "tc-2", tool: "write_file", status: "error" }),
@@ -98,13 +98,29 @@ describe("ToolProgressIndicator", () => {
     ];
     render(<ToolProgressIndicator toolCalls={tcs} />);
 
-    const visibleSteps = screen.getAllByText(/^Step /).map((node) => node.textContent);
-    expect(visibleSteps).toEqual([
-      "Step 4 · Read file",
-      "Step 3 · Run the backtest",
-      "Step 2 · Generate code",
-      "Step 1 · Run command",
+    const labels = screen
+      .getAllByText(/Run command|Generate code|Run the backtest|Read file/)
+      .map((node) => node.textContent);
+    expect(labels).toEqual([
+      "Run command",
+      "Generate code",
+      "Run the backtest",
+      "Read file",
     ]);
+  });
+
+  it("coalesces consecutive successful calls of the same tool into one ×N row", () => {
+    const tcs = [
+      makeTc({ id: "bt-1", status: "ok", arguments: { symbol: "AAPL" }, elapsed_ms: 300 }),
+      makeTc({ id: "bt-2", status: "ok", arguments: { symbol: "MSFT" }, elapsed_ms: 400 }),
+      makeTc({ id: "sh-1", tool: "bash", status: "running" }),
+    ];
+    render(<ToolProgressIndicator toolCalls={tcs} />);
+
+    expect(screen.getAllByText(/Run the backtest/)).toHaveLength(1);
+    expect(screen.getByText("×2")).toBeInTheDocument();
+    expect(screen.getByText("AAPL, MSFT")).toBeInTheDocument();
+    expect(screen.getByText("0.7s")).toBeInTheDocument();
   });
 
   it("shows determinate progress bar when progress data exists", () => {

@@ -9,6 +9,7 @@ import {
   BarChart3,
   CheckCircle2,
   Code2,
+  Copy,
   Database,
   Download,
   FileCheck2,
@@ -18,8 +19,9 @@ import {
   ShieldCheck,
   XCircle,
 } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { api, type BacktestMetrics, type RunCard, type RunData } from "@/lib/api";
+import { api, type BacktestMetrics, type RunCard, type RunData, type ValidationData } from "@/lib/api";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import { CandlestickChart } from "@/components/charts/CandlestickChart";
@@ -425,9 +427,13 @@ function RunCardTab({ card }: { card: RunCard }) {
         </RunCardPanel>
         <RunCardPanel title={i18n.t("runDetail.validationPayload")} icon={ShieldCheck}>
           {card.validation ? (
-            <pre className="max-h-80 overflow-auto rounded-md bg-muted/40 p-3 text-xs leading-relaxed">
-              {JSON.stringify(card.validation, null, 2)}
-            </pre>
+            hasStructuredValidation(card.validation) ? (
+              <ValidationPanel data={card.validation as unknown as ValidationData} compact />
+            ) : (
+              <pre className="max-h-80 overflow-auto rounded-md bg-muted/40 p-3 text-xs leading-relaxed">
+                {JSON.stringify(card.validation, null, 2)}
+              </pre>
+            )
           ) : (
             <p className="text-sm text-muted-foreground">{i18n.t("runDetail.noValidationPayload")}</p>
           )}
@@ -504,6 +510,12 @@ function KeyValueTable({ data, empty, monospaceValues = false }: { data: Record<
       </table>
     </div>
   );
+}
+
+function hasStructuredValidation(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return Boolean(v.monte_carlo || v.bootstrap || v.walk_forward);
 }
 
 function formatRunCardValue(value: unknown): string {
@@ -666,11 +678,107 @@ function ChartTab({
   );
 }
 
+const TRADES_PAGE_SIZE = 100;
+
+function normalizeSide(value?: string): "BUY" | "SELL" | "" {
+  const side = (value || "").trim().toUpperCase();
+  if (side.startsWith("B")) return "BUY";
+  if (side.startsWith("S")) return "SELL";
+  return "";
+}
+
+function parseTradeNumber(value?: string): number | null {
+  if (value == null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function signedNumberClass(value: number | null): string {
+  if (value == null || value === 0) return "text-muted-foreground";
+  return value > 0 ? "text-success" : "text-danger";
+}
+
+function formatSigned(value: number, suffix = ""): string {
+  return `${value > 0 ? "+" : ""}${value.toFixed(2)}${suffix}`;
+}
+
 function TradesTab({ run }: { run: RunData }) {
   const trades = run.trade_log || [];
+  const [sideFilter, setSideFilter] = useState<"" | "BUY" | "SELL">("");
+  const [symbolFilter, setSymbolFilter] = useState("");
+  const [visibleCount, setVisibleCount] = useState(TRADES_PAGE_SIZE);
   if (trades.length === 0) return <div className="p-8 text-muted-foreground text-sm">{i18n.t("runDetail.noTrades")}</div>;
+
+  const symbols = [...new Set(trades.map((tr) => tr.code).filter(Boolean))];
+  const hasPnl = trades.some((tr) => parseTradeNumber(tr.pnl) != null);
+  const hasReturnPct = trades.some((tr) => parseTradeNumber(tr.return_pct) != null);
+  const hasHoldingDays = trades.some((tr) => (tr.holding_days ?? "") !== "");
+
+  const filtered = trades.filter((tr) => (
+    (!sideFilter || normalizeSide(tr.side) === sideFilter)
+    && (!symbolFilter || tr.code === symbolFilter)
+  ));
+  const buys = filtered.filter((tr) => normalizeSide(tr.side) === "BUY").length;
+  const sells = filtered.filter((tr) => normalizeSide(tr.side) === "SELL").length;
+  const totalPnl = hasPnl
+    ? filtered.reduce((sum, tr) => sum + (parseTradeNumber(tr.pnl) ?? 0), 0)
+    : null;
+  const visible = filtered.slice(0, visibleCount);
+  const remaining = filtered.length - visible.length;
+
+  const sideChips: { id: "" | "BUY" | "SELL"; label: string }[] = [
+    { id: "", label: i18n.t("runDetail.sideAll") },
+    { id: "BUY", label: i18n.t("runDetail.sideBuy") },
+    { id: "SELL", label: i18n.t("runDetail.sideSell") },
+  ];
+
   return (
-    <div className="p-4">
+    <div className="p-4 space-y-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">{i18n.t("runDetail.tradesCount", { count: filtered.length })}</span>
+        <span>{i18n.t("runDetail.sideSummary", { buy: buys, sell: sells })}</span>
+        {totalPnl != null && (
+          <span className="inline-flex items-center gap-1">
+            {i18n.t("runDetail.totalPnl")}
+            <span className={cn("font-mono font-medium tabular-nums", signedNumberClass(totalPnl))}>
+              {formatSigned(totalPnl)}
+            </span>
+          </span>
+        )}
+        <div className="ms-auto flex flex-wrap items-center gap-1.5">
+          <div className="flex gap-1" role="group">
+            {sideChips.map((chip) => (
+              <button
+                key={chip.id || "all"}
+                type="button"
+                onClick={() => { setSideFilter(chip.id); setVisibleCount(TRADES_PAGE_SIZE); }}
+                className={cn(
+                  "rounded-full border px-2.5 py-1 transition-colors",
+                  sideFilter === chip.id
+                    ? "border-primary/30 bg-primary/10 font-medium text-primary"
+                    : "border-border/60 hover:bg-muted/60",
+                )}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+          {symbols.length > 1 && (
+            <select
+              value={symbolFilter}
+              onChange={(event) => { setSymbolFilter(event.target.value); setVisibleCount(TRADES_PAGE_SIZE); }}
+              className="h-7 rounded-md border border-border/60 bg-background px-2 text-xs"
+              aria-label={i18n.t("runDetail.symbol")}
+            >
+              <option value="">{i18n.t("runDetail.allSymbols")}</option>
+              {symbols.map((symbol) => (
+                <option key={symbol} value={symbol}>{symbol}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      </div>
+
       <div className="overflow-x-auto rounded-xl border border-border/60 bg-card shadow-sm">
         <table className="w-full text-sm">
           <thead>
@@ -678,25 +786,67 @@ function TradesTab({ run }: { run: RunData }) {
               <th className="py-2 ps-4 pr-4">{i18n.t("runDetail.time")}</th>
               <th className="py-2 pr-4">{i18n.t("runDetail.code2")}</th>
               <th className="py-2 pr-4">{i18n.t("runDetail.side")}</th>
-              <th className="py-2 pr-4">{i18n.t("runDetail.price")}</th>
-              <th className="py-2 pr-4">{i18n.t("runDetail.qty")}</th>
+              <th className="py-2 pr-4 text-right">{i18n.t("runDetail.price")}</th>
+              <th className="py-2 pr-4 text-right">{i18n.t("runDetail.qty")}</th>
+              {hasPnl && <th className="py-2 pr-4 text-right">{i18n.t("runDetail.pnl")}</th>}
+              {hasReturnPct && <th className="py-2 pr-4 text-right">{i18n.t("runDetail.returnPct")}</th>}
+              {hasHoldingDays && <th className="py-2 pr-4 text-right">{i18n.t("runDetail.holdingDays")}</th>}
               <th className="py-2">{i18n.t("runDetail.reason")}</th>
             </tr>
           </thead>
           <tbody>
-            {trades.map((tr, i) => (
-              <tr key={i} className="border-b last:border-0 hover:bg-muted/40">
-                <td className="py-2 ps-4 pr-4 font-mono text-xs">{tr.time || tr.timestamp}</td>
-                <td className="py-2 pr-4">{tr.code}</td>
-                <td className={cn("py-2 pr-4 font-medium", tr.side === "BUY" ? "text-success" : "text-danger")}>{tr.side}</td>
-                <td className="py-2 pr-4 font-mono tabular-nums">{tr.price}</td>
-                <td className="py-2 pr-4 font-mono tabular-nums">{tr.qty}</td>
-                <td className="py-2 text-muted-foreground">{tr.reason}</td>
-              </tr>
-            ))}
+            {visible.map((tr, i) => {
+              const side = normalizeSide(tr.side);
+              const pnl = parseTradeNumber(tr.pnl);
+              const returnPct = parseTradeNumber(tr.return_pct);
+              return (
+                <tr key={i} className={cn("border-b last:border-0 hover:bg-muted/40", i % 2 === 1 && "bg-muted/10")}>
+                  <td className="py-2 ps-4 pr-4 font-mono text-xs">{tr.time || tr.timestamp}</td>
+                  <td className="py-2 pr-4 font-mono text-xs">{tr.code}</td>
+                  <td className="py-2 pr-4">
+                    <span className={cn(
+                      "inline-block rounded-full px-2 py-0.5 text-xs font-medium",
+                      side === "BUY" && "bg-success/10 text-success",
+                      side === "SELL" && "bg-danger/10 text-danger",
+                      side === "" && "bg-muted text-muted-foreground",
+                    )}>
+                      {side === "BUY" ? i18n.t("runDetail.sideBuy") : side === "SELL" ? i18n.t("runDetail.sideSell") : tr.side}
+                    </span>
+                  </td>
+                  <td className="py-2 pr-4 text-right font-mono tabular-nums">{tr.price}</td>
+                  <td className="py-2 pr-4 text-right font-mono tabular-nums">{tr.qty}</td>
+                  {hasPnl && (
+                    <td className={cn("py-2 pr-4 text-right font-mono tabular-nums", signedNumberClass(pnl))}>
+                      {pnl != null ? formatSigned(pnl) : "—"}
+                    </td>
+                  )}
+                  {hasReturnPct && (
+                    <td className={cn("py-2 pr-4 text-right font-mono tabular-nums", signedNumberClass(returnPct))}>
+                      {returnPct != null ? formatSigned(returnPct, "%") : "—"}
+                    </td>
+                  )}
+                  {hasHoldingDays && (
+                    <td className="py-2 pr-4 text-right font-mono tabular-nums text-muted-foreground">{tr.holding_days ?? "—"}</td>
+                  )}
+                  <td className="py-2 text-xs text-muted-foreground">{tr.reason}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
+
+      {remaining > 0 && (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => setVisibleCount((count) => count + TRADES_PAGE_SIZE)}
+            className="rounded-full border border-border/60 px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+          >
+            {i18n.t("runDetail.showMore", { count: Math.min(remaining, TRADES_PAGE_SIZE) })}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -705,16 +855,40 @@ function CodeTab({ code }: { code: Record<string, string> }) {
   const files = Object.entries(code);
   const [active, setActive] = useState(files[0]?.[0] || "");
   if (files.length === 0) return <div className="p-8 text-muted-foreground text-sm">{i18n.t("runDetail.noCodeFiles")}</div>;
+
+  const activeCode = code[active] || "";
+  const lineCount = activeCode ? activeCode.split("\n").length : 0;
+  const copyActive = () => {
+    navigator.clipboard.writeText(activeCode).then(
+      () => toast.success(i18n.t("runDetail.codeCopied")),
+      () => {},
+    );
+  };
+
   return (
     <div className="flex flex-col h-full">
-      <div className="flex gap-1 p-2 border-b border-border/60">
-        {files.map(([name]) => (
-          <button key={name} onClick={() => setActive(name)} className={cn("px-3 py-1 rounded text-xs font-mono", active === name ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/60")}>{name}</button>
-        ))}
+      <div className="flex items-center gap-2 p-2 border-b border-border/60">
+        <div className="flex min-w-0 flex-wrap gap-1">
+          {files.map(([name]) => (
+            <button key={name} onClick={() => setActive(name)} className={cn("px-3 py-1 rounded text-xs font-mono", active === name ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/60")}>{name}</button>
+          ))}
+        </div>
+        <div className="ms-auto flex shrink-0 items-center gap-2">
+          <span className="text-[10px] tabular-nums text-muted-foreground">
+            {i18n.t("runDetail.codeLines", { count: lineCount })}
+          </span>
+          <button
+            type="button"
+            onClick={copyActive}
+            className="flex items-center gap-1 rounded-md border border-border/60 px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+          >
+            <Copy className="h-3 w-3" /> {i18n.t("runDetail.copyCode")}
+          </button>
+        </div>
       </div>
-      <div className="flex-1 overflow-auto p-3 text-[11px] leading-relaxed bg-muted/20 [&_pre]:m-0 [&_pre]:bg-transparent [&_code]:text-[11px]">
+      <div className="flex-1 overflow-auto p-3 text-xs leading-relaxed bg-muted/20 [&_pre]:m-0 [&_pre]:bg-transparent [&_code]:text-xs">
         <ReactMarkdown rehypePlugins={rehypePlugins}>
-          {`\`\`\`python\n${code[active] || ""}\n\`\`\``}
+          {`\`\`\`python\n${activeCode}\n\`\`\``}
         </ReactMarkdown>
       </div>
     </div>

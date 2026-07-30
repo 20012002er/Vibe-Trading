@@ -1510,7 +1510,7 @@ export function Agent() {
         <div
           className={[
             "max-w-3xl mx-auto space-y-8",
-            !sessionLoading && messages.length === 0 ? "min-h-full flex flex-col justify-end" : "",
+            !sessionLoading && messages.length === 0 ? "min-h-full flex flex-col" : "",
           ].join(" ")}
         >
           {sessionLoading && (
@@ -1527,7 +1527,9 @@ export function Agent() {
             </div>
           )}
           {!sessionLoading && messages.length === 0 && (
-            <div className="msg-enter">
+            // my-auto (not justify-*) centers the hero vertically while staying
+            // scroll-reachable once the example library expands past the viewport.
+            <div className="msg-enter my-auto">
               <WelcomeScreen onExample={fillComposer} />
             </div>
           )}

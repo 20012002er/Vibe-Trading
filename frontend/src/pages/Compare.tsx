@@ -2,7 +2,7 @@ import i18n from '@/i18n';
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { GitCompare, ArrowRight } from "lucide-react";
+import { GitCompare, ArrowLeftRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { api, type RunListItem, type RunData, type EquityPoint } from "@/lib/api";
 import { echarts, CHART_GROUP, connectCharts } from "@/lib/echarts";
@@ -112,9 +112,12 @@ interface EquityChartOverlayProps {
   rightCurve: EquityPoint[];
   leftLabel: string;
   rightLabel: string;
+  /** Rebase both curves to 100 at their first bar — runs with different
+   * initial capital are only comparable on an indexed scale. */
+  rebase: boolean;
 }
 
-function EquityChartOverlay({ leftCurve, rightCurve, leftLabel, rightLabel }: EquityChartOverlayProps) {
+function EquityChartOverlay({ leftCurve, rightCurve, leftLabel, rightLabel, rebase }: EquityChartOverlayProps) {
   const ref = useRef<HTMLDivElement>(null);
   const dark = useThemeDark();
 
@@ -133,9 +136,13 @@ function EquityChartOverlay({ leftCurve, rightCurve, leftLabel, rightLabel }: Eq
     for (const p of rightCurve) dateSet.add(p.time);
     const dates = Array.from(dateSet).sort();
 
-    // Build lookup maps
-    const leftMap = new Map(leftCurve.map((p) => [p.time, Number(p.equity)]));
-    const rightMap = new Map(rightCurve.map((p) => [p.time, Number(p.equity)]));
+    // Build lookup maps, optionally rebased to an index of 100
+    const leftBase = Number(leftCurve[0]?.equity) || 0;
+    const rightBase = Number(rightCurve[0]?.equity) || 0;
+    const scale = (raw: number, base: number) =>
+      rebase && base > 0 ? Number(((raw / base) * 100).toFixed(2)) : raw;
+    const leftMap = new Map(leftCurve.map((p) => [p.time, scale(Number(p.equity), leftBase)]));
+    const rightMap = new Map(rightCurve.map((p) => [p.time, scale(Number(p.equity), rightBase)]));
 
     const leftData = dates.map((d) => leftMap.get(d) ?? null);
     const rightData = dates.map((d) => rightMap.get(d) ?? null);
@@ -157,7 +164,8 @@ function EquityChartOverlay({ leftCurve, rightCurve, leftLabel, rightLabel }: Eq
           let html = `<b>${params[0].axisValue}</b>`;
           for (const p of params) {
             if (p.value == null) continue;
-            html += `<br/>${p.marker} ${p.seriesName}: <b>${Number(p.value).toLocaleString()}</b>`;
+            const value = rebase ? Number(p.value).toFixed(2) : Number(p.value).toLocaleString();
+            html += `<br/>${p.marker} ${p.seriesName}: <b>${value}</b>`;
           }
           return html;
         },
@@ -217,7 +225,7 @@ function EquityChartOverlay({ leftCurve, rightCurve, leftLabel, rightLabel }: Eq
       if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
       chart.dispose();
     };
-  }, [leftCurve, rightCurve, leftLabel, rightLabel, dark]);
+  }, [leftCurve, rightCurve, leftLabel, rightLabel, rebase, dark]);
 
   if (leftCurve.length === 0 && rightCurve.length === 0) return null;
 
@@ -235,6 +243,7 @@ export function Compare() {
   const [rightCurve, setRightCurve] = useState<EquityPoint[]>([]);
   const [leftLoading, setLeftLoading] = useState(false);
   const [rightLoading, setRightLoading] = useState(false);
+  const [rebase, setRebase] = useState(true);
   const leftRequestGeneration = useRef(0);
   const rightRequestGeneration = useRef(0);
 
@@ -316,7 +325,7 @@ export function Compare() {
   const hasData = Boolean(leftData || rightData);
 
   return (
-    <div className="p-8 max-w-4xl space-y-6">
+    <div className="mx-auto max-w-5xl p-8 space-y-6">
       <h1 className="flex items-center gap-2 text-2xl font-semibold">
         <GitCompare className="h-5 w-5" aria-hidden="true" /> {t("compare.title")}
       </h1>
@@ -330,7 +339,15 @@ export function Compare() {
             {runs.map((r) => <option key={r.run_id} value={r.run_id}>{runLabel(r)} ({r.status})</option>)}
           </select>
         </div>
-        <ArrowRight className="h-5 w-5 text-muted-foreground mb-2 shrink-0" />
+        <button
+          type="button"
+          onClick={() => { setLeftId(rightId); setRightId(leftId); }}
+          title={i18n.t("compare.swapRuns")}
+          className="mb-1 shrink-0 rounded-md border border-border/60 p-2 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+        >
+          <ArrowLeftRight className="h-4 w-4" aria-hidden="true" />
+          <span className="sr-only">{i18n.t("compare.swapRuns")}</span>
+        </button>
         <div className="flex-1">
           <label className="text-xs text-muted-foreground block mb-1">{i18n.t("compare.compare")}</label>
           <select value={rightId} onChange={(e) => setRightId(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-border/60 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" title={rightRun?.prompt || rightId}>
@@ -356,12 +373,35 @@ export function Compare() {
       {/* Equity curve overlay */}
       {(leftCurve.length > 0 || rightCurve.length > 0) && (
         <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-muted-foreground mb-2">{i18n.t("compare.equityDrawdown")}</h2>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-muted-foreground">{i18n.t("compare.equityOverlay")}</h2>
+            <div className="flex gap-1 text-xs" role="group">
+              {[
+                { id: true, label: i18n.t("compare.rebasedMode") },
+                { id: false, label: i18n.t("compare.rawMode") },
+              ].map((mode) => (
+                <button
+                  key={String(mode.id)}
+                  type="button"
+                  onClick={() => setRebase(mode.id)}
+                  className={cn(
+                    "rounded-full border px-2.5 py-1 transition-colors",
+                    rebase === mode.id
+                      ? "border-primary/30 bg-primary/10 font-medium text-primary"
+                      : "border-border/60 text-muted-foreground hover:bg-muted/60",
+                  )}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <EquityChartOverlay
             leftCurve={leftCurve}
             rightCurve={rightCurve}
             leftLabel={leftRun ? truncatePrompt(leftRun.prompt, 20) || t("compare.baseline") : t("compare.baseline")}
             rightLabel={rightRun ? truncatePrompt(rightRun.prompt, 20) || t("compare.compare") : t("compare.compare")}
+            rebase={rebase}
           />
         </div>
       )}
@@ -383,11 +423,38 @@ export function Compare() {
                 const lv = resolveMetric(leftData, key);
                 const rv = resolveMetric(rightData, key);
                 const diff = diffClass(lv, rv, higherIsBetter);
+                // Proportional in-cell bars (colored to match the chart legend)
+                // make the winner readable at a glance without parsing numbers.
+                const la = Number.isFinite(Number(lv)) ? Math.abs(Number(lv)) : null;
+                const ra = Number.isFinite(Number(rv)) ? Math.abs(Number(rv)) : null;
+                const maxAbs = Math.max(la ?? 0, ra ?? 0);
+                const shareL = la != null && maxAbs > 0 ? la / maxAbs : 0;
+                const shareR = ra != null && maxAbs > 0 ? ra / maxAbs : 0;
+                const leftWins = diff.verdict === "worse";
+                const rightWins = diff.verdict === "better";
                 return (
                   <tr key={key} className="border-b last:border-0 hover:bg-muted/40">
                     <td className="px-4 py-2.5 font-medium">{label}</td>
-                    <td className="px-4 py-2.5 text-right font-mono tabular-nums">{fmt(lv, type)}</td>
-                    <td className="px-4 py-2.5 text-right font-mono tabular-nums">{fmt(rv, type)}</td>
+                    <td className="relative px-4 py-2.5 text-right font-mono tabular-nums">
+                      {shareL > 0 && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-y-1.5 end-2 rounded-sm"
+                          style={{ width: `${shareL * 55}%`, backgroundColor: "var(--chart-compare-a)", opacity: 0.14 }}
+                        />
+                      )}
+                      <span className={cn("relative", leftWins && "font-semibold")}>{fmt(lv, type)}</span>
+                    </td>
+                    <td className="relative px-4 py-2.5 text-right font-mono tabular-nums">
+                      {shareR > 0 && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-y-1.5 end-2 rounded-sm"
+                          style={{ width: `${shareR * 55}%`, backgroundColor: "var(--chart-compare-b)", opacity: 0.14 }}
+                        />
+                      )}
+                      <span className={cn("relative", rightWins && "font-semibold")}>{fmt(rv, type)}</span>
+                    </td>
                     <td className={cn("px-4 py-2.5 text-right font-mono tabular-nums font-semibold", diff.className)}>
                       {diff.verdict && (
                         <>

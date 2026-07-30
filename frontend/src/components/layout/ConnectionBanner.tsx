@@ -9,10 +9,11 @@ interface Props {
 
 export function ConnectionBanner({ status, retryAttempt }: Props) {
   const { t } = useTranslation();
-  if (status === "connected") return null;
-  const terminal = status === "disconnected" || (
-    status === "reconnecting" && (retryAttempt ?? 0) >= 5
-  );
+  // "disconnected" is the store's boot state and the deliberate-teardown state
+  // (navigating away from a session) — neither is a connection loss, so only
+  // an active reconnect loop may surface the banner.
+  if (status !== "reconnecting") return null;
+  const terminal = (retryAttempt ?? 0) >= 5;
 
   return (
     <div

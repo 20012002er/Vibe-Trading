@@ -26,7 +26,6 @@ export function Layout() {
     { to: "/alpha-zoo", icon: Layers, label: t('layout.alphaZoo') },
     { to: "/settings", icon: Settings, label: t('layout.settings') },
     { to: "/correlation", icon: BarChart3, label: t('layout.correlation') },
-    { to: "/about", icon: BarChart3, label: t('layout.about') },
   ];
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
@@ -203,9 +202,11 @@ export function Layout() {
                           {streamingSessionId === s.session_id ? (
                             <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" />
                           ) : (
+                            // Transparent placeholder keeps titles aligned with
+                            // spinner rows without a meaningless gray dot.
                             <span className={cn(
                               "h-1.5 w-1.5 rounded-full shrink-0",
-                              isActive ? "bg-primary/70" : "bg-muted-foreground/40"
+                              isActive ? "bg-primary/70" : "bg-transparent"
                             )} />
                           )}
                           <span className="min-w-0 truncate">{s.title || s.session_id.slice(0, 16)}</span>
@@ -278,7 +279,15 @@ export function Layout() {
               </div>
               <div className="flex flex-col gap-1 max-md:items-center">
                 <LanguageSwitcher />
-                <p className="text-[10px] text-muted-foreground/60 max-md:hidden">{t('app.version')}</p>
+                {/* About is marketing, not a work surface — it lives here by
+                    the version stamp instead of in the primary nav. */}
+                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60 max-md:hidden">
+                  <span>{t('app.version')}</span>
+                  <span aria-hidden="true">·</span>
+                  <Link to="/about" className="transition-colors hover:text-foreground">
+                    {t('layout.about')}
+                  </Link>
+                </div>
               </div>
             </>
           )}

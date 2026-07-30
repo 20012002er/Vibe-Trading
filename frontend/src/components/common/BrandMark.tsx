@@ -11,33 +11,20 @@ export function BrandMark({
       className={className}
       aria-hidden="true"
     >
-      <rect width="32" height="32" rx="6" fill="hsl(27 90% 52%)" />
-      <path
-        d="M6 8 L11 24 L16 8"
-        stroke="#ffffff"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
-      <line
-        x1="18"
-        y1="8"
-        x2="28"
-        y2="8"
-        stroke="rgba(255,255,255,0.75)"
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
-      <line
-        x1="23"
-        y1="8"
-        x2="23"
-        y2="24"
-        stroke="rgba(255,255,255,0.75)"
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
+      <defs>
+        <linearGradient id="vt-mark-grad" x1="0" y1="32" x2="32" y2="0" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#EA580C" />
+          <stop offset="1" stopColor="#F7A316" />
+        </linearGradient>
+      </defs>
+      <rect width="32" height="32" rx="7.5" fill="url(#vt-mark-grad)" />
+      {/* Three ascending candlesticks. */}
+      <line x1="9.5" y1="14" x2="9.5" y2="24.5" stroke="#ffffff" strokeOpacity="0.75" strokeWidth="1.8" strokeLinecap="round" />
+      <rect x="7.5" y="16" width="4" height="6" rx="1" fill="#ffffff" />
+      <line x1="16" y1="9.5" x2="16" y2="21.5" stroke="#ffffff" strokeOpacity="0.75" strokeWidth="1.8" strokeLinecap="round" />
+      <rect x="14" y="11.5" width="4" height="7" rx="1" fill="#ffffff" />
+      <line x1="22.5" y1="5.5" x2="22.5" y2="18" stroke="#ffffff" strokeOpacity="0.75" strokeWidth="1.8" strokeLinecap="round" />
+      <rect x="20.5" y="7.5" width="4" height="7.5" rx="1" fill="#ffffff" />
     </svg>
   );
 }

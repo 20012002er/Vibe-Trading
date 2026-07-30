@@ -424,7 +424,9 @@ export function Settings() {
         <p className="max-w-3xl text-sm text-muted-foreground">{t("settings.llmSettingsDesc")}</p>
       </div>
 
-      <form onSubmit={submit} className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
+      {/* Column ratio matches the QVeris and data-source sections so the
+          card seams align down the page. */}
+      <form onSubmit={submit} className="grid gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]">
         <section className="rounded-lg border bg-card p-5 shadow-sm">
           <div className="mb-5 flex items-center gap-2">
             <Server className="h-4 w-4 text-primary" />
@@ -509,7 +511,7 @@ export function Settings() {
                   disabled={apiKeyDisabled}
                 />
               </div>
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-start justify-between gap-3">
                 <span className={hintClass}>{keyStatus}</span>
                 {selectedProvider?.api_key_required ? (
                   <label className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
@@ -634,7 +636,7 @@ export function Settings() {
                   disabled={clearTushareToken}
                 />
               </div>
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-start justify-between gap-3">
                 <span className={hintClass}>
                   {t("settings.tushareTokenDesc", {
                     defaultValue: "Used for China A-share, futures, fund, and macro data. If unset, the project falls back to AKShare where available.",

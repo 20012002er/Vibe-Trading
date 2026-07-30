@@ -100,7 +100,7 @@ describe("WelcomeScreen", () => {
     expect(onExample).toHaveBeenCalledTimes(4);
   });
 
-  it("reveals all eight categories and 21 examples from the disclosure", async () => {
+  it("reveals eight category tabs and switches example cards from the disclosure", async () => {
     const user = userEvent.setup();
     render(<WelcomeScreen onExample={onExample} />);
 
@@ -116,8 +116,9 @@ describe("WelcomeScreen", () => {
 
     expect(trigger).toHaveAttribute("aria-expanded", "true");
     expect(library).toHaveAttribute("aria-hidden", "false");
-    expect(within(library!).getAllByRole("button")).toHaveLength(21);
-    expect(library!.querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(8);
+    // One category at a time: 8 tab chips, only the active category's cards.
+    expect(within(library!).getAllByRole("tab")).toHaveLength(8);
+    expect(within(library!).getAllByRole("button")).toHaveLength(3);
     expect(within(library!).getAllByRole("button")[0]).toHaveClass(
       "focus-visible:ring-2",
       "focus-visible:ring-primary/40",
@@ -134,6 +135,13 @@ describe("WelcomeScreen", () => {
     ]) {
       expect(within(library!).getByText(category)).toBeInTheDocument();
     }
+
+    await user.click(within(library!).getByRole("tab", { name: /Value Investing/ }));
+    expect(within(library!).getByRole("tab", { name: /Value Investing/ })).toHaveAttribute("aria-selected", "true");
+    expect(within(library!).getAllByRole("button")).toHaveLength(4);
+    expect(
+      within(library!).getByRole("button", { name: /Check if a stock is expensive/ }),
+    ).toBeInTheDocument();
   });
 
   it("closes the example library with Escape and restores focus to its trigger", async () => {

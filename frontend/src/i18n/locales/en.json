@@ -475,7 +475,11 @@
       "steps": "{{count}} steps",
       "continue": "Continue",
       "reattach": "Re-attach"
-    }
+    },
+    "resumeConnector": "Resume connector",
+    "resumeConnectorTitle": "Clear the kill switch and re-enable connector activity",
+    "connectorResumed": "Connector resumed",
+    "failedToResumeConnector": "Failed to resume connector."
   },
   "runDetail": {
     "title": "Run Detail",
@@ -527,7 +531,21 @@
     "noCodeFiles": "No code files.",
     "fullReport": "Full Report →",
     "unknown": "unknown",
-    "noneRecorded": "None recorded"
+    "noneRecorded": "None recorded",
+    "tradesCount": "{{count}} trades",
+    "sideSummary": "Buy {{buy}} · Sell {{sell}}",
+    "totalPnl": "Total P&L",
+    "pnl": "P&L",
+    "returnPct": "Return",
+    "holdingDays": "Held (days)",
+    "showMore": "Show {{count}} more",
+    "allSymbols": "All symbols",
+    "sideAll": "All",
+    "sideBuy": "Buy",
+    "sideSell": "Sell",
+    "copyCode": "Copy",
+    "codeCopied": "Code copied",
+    "codeLines": "{{count}} lines"
   },
   "compare": {
     "title": "Strategy Comparison",
@@ -557,7 +575,11 @@
     "exposureTime": "Exposure Time",
     "avgHoldingPeriod": "Avg Holding Period",
     "better": "Better",
-    "worse": "Worse"
+    "worse": "Worse",
+    "equityOverlay": "Equity curves",
+    "rebasedMode": "Rebased = 100",
+    "rawMode": "Raw",
+    "swapRuns": "Swap"
   },
   "correlation": {
     "title": "Correlation Matrix",
@@ -746,7 +768,13 @@
     "period2": "Period",
     "return": "Return",
     "maxDd": "Max DD",
-    "winRate": "Win Rate"
+    "winRate": "Win Rate",
+    "pathsTitle": "Simulated equity paths",
+    "sharpeDist": "Sharpe distribution",
+    "actualLabel": "Actual",
+    "medianLabel": "Median",
+    "windowReturns": "Per-window return",
+    "tradeNumber": "Trade #"
   },
   "thinking": {
     "processing": "Processing",
@@ -782,7 +810,18 @@
     "never": "never",
     "unknown": "unknown",
     "justNow": "just now",
-    "loadingInstructions": "Loading connector authorization instructions..."
+    "loadingInstructions": "Loading connector authorization instructions...",
+    "fallbackInstruction": "Run `vibe-trading connector list`, choose the broker profile, then run `vibe-trading connector authorize <profile>` from the desktop session that will hold the broker connection.",
+    "secondsAgo": "{{n}}s ago",
+    "minutesAgo": "{{n}}m ago",
+    "hoursAgo": "{{n}}h ago",
+    "daysAgo": "{{n}}d ago",
+    "runnerStartedFor": "Runner started for {{broker}}",
+    "runnerStoppedFor": "Runner stopped for {{broker}}",
+    "runnerControlFailed": "Runner control failed.",
+    "startRunnerTitle": "Start the persistent runner",
+    "stopRunnerTitle": "Stop the persistent runner",
+    "expiresAt": "Expires {{time}}"
   },
   "swarmStatus": {
     "agents": "{{done}}/{{total}} agents",

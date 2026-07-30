@@ -251,6 +251,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ session_id, broker, reason }),
     }),
+  resumeLive: (session_id?: string, broker?: string) =>
+    request<HaltLiveResponse>("/live/resume", {
+      method: "POST",
+      body: JSON.stringify({ session_id, broker }),
+    }),
   // Read the persistent runtime status across all authorized brokers (SPEC §7.5).
   // Polled by the RunnerStatus panel; a plain authenticated GET, never a chat message.
   getLiveStatus: (signal?: AbortSignal) => request<LiveStatus>("/live/status", { signal }),
@@ -432,6 +437,19 @@ export interface EquityPoint {
   drawdown: string | number;
 }
 
+/** Monte Carlo fan-chart payload: percentile envelope + sampled paths over trade order. */
+export interface MonteCarloEquityPaths {
+  steps: number[];
+  initial_capital: number;
+  actual: number[];
+  band_p5: number[];
+  band_p25: number[];
+  band_p50: number[];
+  band_p75: number[];
+  band_p95: number[];
+  samples: number[][];
+}
+
 export interface ValidationData {
   monte_carlo?: {
     actual_sharpe: number;
@@ -444,6 +462,8 @@ export interface ValidationData {
     simulated_sharpe_p95: number;
     n_simulations: number;
     n_trades: number;
+    sharpe_samples?: number[];
+    equity_paths?: MonteCarloEquityPaths;
     error?: string;
   };
   bootstrap?: {
@@ -454,6 +474,7 @@ export interface ValidationData {
     prob_positive: number;
     confidence: number;
     n_bootstrap: number;
+    sharpe_samples?: number[];
     error?: string;
   };
   walk_forward?: {

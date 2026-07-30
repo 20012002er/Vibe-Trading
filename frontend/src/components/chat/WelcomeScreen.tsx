@@ -239,6 +239,7 @@ export function WelcomeScreen({ onExample }: Props) {
   const { t } = useTranslation();
   const [greetingKey] = useState(() => pickGreetingKey());
   const [isExamplesOpen, setIsExamplesOpen] = useState(false);
+  const [activeCategory, setActiveCategory] = useState(0);
   const examplesTriggerRef = useRef<HTMLButtonElement>(null);
 
   return (
@@ -310,33 +311,52 @@ export function WelcomeScreen({ onExample }: Props) {
           }`}
         >
           <div className="min-h-0 overflow-hidden">
-            <div className="grid grid-cols-1 gap-3 pt-8 sm:grid-cols-2">
-              {CATEGORIES.map((cat) => (
-                <div key={cat.labelKey} className="space-y-2">
-                  <div className="flex items-center gap-1.5 px-1 text-xs font-medium text-muted-foreground">
+            {/* One category at a time: a chip tab bar + that category's cards.
+                Rendering all 8 categories at once (grid or masonry) reads as
+                an unstructured wall — categories have uneven card counts. */}
+            <div className="pt-6">
+              <div
+                className="flex flex-wrap justify-center gap-1.5"
+                role="tablist"
+                aria-label={t("welcome.browseAllExamples" as any)}
+              >
+                {CATEGORIES.map((cat, index) => (
+                  <button
+                    key={cat.labelKey}
+                    type="button"
+                    role="tab"
+                    aria-selected={index === activeCategory}
+                    tabIndex={isExamplesOpen ? 0 : -1}
+                    onClick={() => setActiveCategory(index)}
+                    className={
+                      index === activeCategory
+                        ? "inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary"
+                        : "inline-flex items-center gap-1.5 rounded-full border border-transparent px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-border/60 hover:text-foreground"
+                    }
+                  >
                     {cat.icon}
                     <span>{t(cat.labelKey as any)}</span>
-                  </div>
-                  <div className="space-y-1.5">
-                    {cat.examples.map((ex) => (
-                      <button
-                        key={ex.titleKey}
-                        type="button"
-                        tabIndex={isExamplesOpen ? 0 : -1}
-                        onClick={() => onExample(t(ex.promptKey as any))}
-                        className="block w-full rounded-xl border border-border/60 px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                      >
-                        <span className="text-sm font-medium leading-snug text-foreground">
-                          {t(ex.titleKey as any)}
-                        </span>
-                        <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
-                          {t(ex.descKey as any)}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
+                  </button>
+                ))}
+              </div>
+              <div role="tabpanel" className="mt-4 grid gap-2 text-left sm:grid-cols-2">
+                {CATEGORIES[activeCategory].examples.map((ex) => (
+                  <button
+                    key={ex.titleKey}
+                    type="button"
+                    tabIndex={isExamplesOpen ? 0 : -1}
+                    onClick={() => onExample(t(ex.promptKey as any))}
+                    className="block w-full rounded-xl border border-border/60 px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  >
+                    <span className="text-sm font-medium leading-snug text-foreground">
+                      {t(ex.titleKey as any)}
+                    </span>
+                    <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+                      {t(ex.descKey as any)}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
