@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: agent_core/channels
+title: 多渠道 IM 接入与 WebUI 网关
+scope:
+    - agent/src/channels/
+    - agent/src/channelsui/
+source_files: []
+depends_on: []
+related_to: []

@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: agent_core/session_goal_swarm/goal
+title: 金融研究目标与证据账本（Goal Ledger）
+scope:
+    - agent/src/goal/
+source_files: []
+depends_on: []
+related_to:
+    - path: agent_core/memory_storage

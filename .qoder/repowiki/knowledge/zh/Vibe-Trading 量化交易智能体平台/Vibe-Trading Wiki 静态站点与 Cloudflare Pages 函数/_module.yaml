@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: wiki_docs
+title: Vibe-Trading Wiki 静态站点与 Cloudflare Pages 函数
+scope:
+    - wiki/
+source_files: []
+depends_on: []
+related_to: []

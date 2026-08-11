@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: agent_core/quantlib
+title: 量化金融数学原语库（quantlib）
+scope:
+    - agent/src/quantlib/
+source_files: []
+depends_on: []
+related_to: []

@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: agent_core/quantlib/fixed_income_options
+title: 固定收益、期权与私募基金数学库
+scope:
+    - agent/src/quantlib/fixedincome.py
+    - agent/src/quantlib/options.py
+    - agent/src/quantlib/fundmath.py
+source_files: []
+depends_on: []
+related_to: []

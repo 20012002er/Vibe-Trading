@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: frontend/settings_and_layout
+title: 设置与全局布局
+scope:
+    - frontend/src/pages/Settings.tsx
+    - frontend/src/components/layout/
+    - frontend/src/components/settings/
+source_files: []
+depends_on: []
+related_to: []

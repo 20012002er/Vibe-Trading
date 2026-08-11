@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: agent_core/api_routes
+title: FastAPI HTTP 路由与认证中间件
+scope:
+    - agent/src/api/
+source_files: []
+depends_on: []
+related_to:
+    - path: agent_core/providers_config_security
+    - path: cli
+    - path: desktop_electron
+    - path: frontend/shared_infrastructure

@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: agent_core/memory_storage
+title: 持久化记忆、实体模型与治理账本
+scope:
+    - agent/src/memory/
+    - agent/src/entities/
+    - agent/src/governance/
+source_files: []
+depends_on: []
+related_to:
+    - path: agent_core/session_goal_swarm/goal
+    - path: agent_core/session_goal_swarm/session

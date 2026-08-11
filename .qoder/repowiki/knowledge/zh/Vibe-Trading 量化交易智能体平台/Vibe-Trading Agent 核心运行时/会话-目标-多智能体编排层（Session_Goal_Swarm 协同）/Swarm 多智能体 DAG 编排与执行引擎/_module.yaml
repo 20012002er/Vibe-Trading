@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: agent_core/session_goal_swarm/swarm
+title: Swarm 多智能体 DAG 编排与执行引擎
+scope:
+    - agent/src/swarm/
+source_files: []
+depends_on: []
+related_to: []

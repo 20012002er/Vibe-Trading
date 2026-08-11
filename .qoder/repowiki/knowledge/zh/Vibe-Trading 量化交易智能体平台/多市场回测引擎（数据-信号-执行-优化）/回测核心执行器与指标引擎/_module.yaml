@@ -1,0 +1,15 @@
+schema_version: 1
+module_path: backtest_engine/core_runner_and_metrics
+title: 回测核心执行器与指标引擎
+scope:
+    - agent/backtest/
+source_files: []
+depends_on: []
+related_to:
+    - path: agent_core/quantlib/attribution_credit_impact
+    - path: agent_core/quantlib/risk_performance
+    - path: agent_core/scheduled_research
+    - path: agent_core/shadow_account
+    - path: backtest_engine/engines
+    - path: backtest_engine/loaders
+    - path: backtest_engine/optimizers

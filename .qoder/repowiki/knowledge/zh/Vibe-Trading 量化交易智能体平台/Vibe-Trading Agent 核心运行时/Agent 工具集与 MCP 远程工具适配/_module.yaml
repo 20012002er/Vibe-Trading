@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: agent_core/tools
+title: Agent 工具集与 MCP 远程工具适配
+scope:
+    - agent/src/tools/
+source_files: []
+depends_on: []
+related_to:
+    - path: agent_core/skills_registry

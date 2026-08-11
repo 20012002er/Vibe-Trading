@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: cli
+title: Vibe-Trading 交互式 CLI 与子命令框架
+scope:
+    - agent/cli/
+    - agent/scripts/
+source_files: []
+depends_on: []
+related_to:
+    - path: agent_core/api_routes

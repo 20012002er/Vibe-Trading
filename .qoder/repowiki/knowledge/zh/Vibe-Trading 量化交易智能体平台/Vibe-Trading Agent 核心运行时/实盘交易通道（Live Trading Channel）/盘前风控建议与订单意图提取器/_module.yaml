@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: agent_core/live_trading/advisory
+title: 盘前风控建议与订单意图提取器
+scope:
+    - agent/src/live/advisory/
+    - agent/src/live/extractors/
+source_files: []
+depends_on: []
+related_to:
+    - path: agent_core/live_trading/core_guards
+    - path: agent_core/live_trading/runtime

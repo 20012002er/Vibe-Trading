@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: agent_core/shadow_account
+title: Shadow Account — 交易模式提取与回测归因
+scope:
+    - agent/src/shadow_account/
+source_files: []
+depends_on: []
+related_to:
+    - path: agent_core/strategy_store
+    - path: backtest_engine/core_runner_and_metrics

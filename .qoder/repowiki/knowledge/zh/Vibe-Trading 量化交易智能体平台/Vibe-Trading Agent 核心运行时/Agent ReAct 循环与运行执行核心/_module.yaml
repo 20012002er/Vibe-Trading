@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: agent_core/agent_loop
+title: Agent ReAct 循环与运行执行核心
+scope:
+    - agent/src/agent/
+    - agent/src/core/
+source_files: []
+depends_on: []
+related_to: []

@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: agent_core/session_goal_swarm/session
+title: 会话生命周期与执行编排（Session & Agent Loop Orchestration）
+scope:
+    - agent/src/session/
+source_files: []
+depends_on: []
+related_to:
+    - path: agent_core/channels/channel_runtime
+    - path: agent_core/memory_storage
+    - path: agent_core/openbb_bridge

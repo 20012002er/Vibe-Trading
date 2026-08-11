@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: agent_core/channels/channelsui
+title: WebSocket Channel WebUI 兼容层
+scope:
+    - agent/src/channelsui/
+source_files: []
+depends_on: []
+related_to:
+    - path: frontend/app_shell_routing

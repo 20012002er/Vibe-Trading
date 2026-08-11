@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: agent_core/strategy_store
+title: 策略与因子制品存储与衰减监控
+scope:
+    - agent/src/strategy_store/
+source_files: []
+depends_on: []
+related_to:
+    - path: agent_core/shadow_account

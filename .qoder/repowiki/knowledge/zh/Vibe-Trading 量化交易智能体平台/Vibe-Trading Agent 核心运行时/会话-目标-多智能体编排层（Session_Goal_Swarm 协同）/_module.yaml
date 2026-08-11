@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: agent_core/session_goal_swarm
+title: 会话-目标-多智能体编排层（Session/Goal/Swarm 协同）
+scope:
+    - agent/src/session/
+    - agent/src/goal/
+    - agent/src/swarm/
+source_files: []
+depends_on: []
+related_to: []

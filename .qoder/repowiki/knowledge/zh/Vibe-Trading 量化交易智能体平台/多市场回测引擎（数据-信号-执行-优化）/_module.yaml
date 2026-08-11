@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: backtest_engine
+title: 多市场回测引擎（数据-信号-执行-优化）
+scope:
+    - agent/backtest/
+source_files: []
+depends_on: []
+related_to: []

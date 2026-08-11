@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: agent_core/live_trading/runtime
+title: 持久化实盘交易运行时（调度/心跳/对账/触发器）
+scope:
+    - agent/src/live/runtime/
+source_files: []
+depends_on: []
+related_to:
+    - path: agent_core/channels/channel_runtime
+    - path: agent_core/live_trading/advisory
+    - path: agent_core/live_trading/core_guards
+    - path: agent_core/live_trading/mandate

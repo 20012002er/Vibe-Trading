@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: agent_core/trading_connectors
+title: 交易连接器聚合层（Broker Connectors）
+scope:
+    - agent/src/trading/
+source_files: []
+depends_on: []
+related_to: []

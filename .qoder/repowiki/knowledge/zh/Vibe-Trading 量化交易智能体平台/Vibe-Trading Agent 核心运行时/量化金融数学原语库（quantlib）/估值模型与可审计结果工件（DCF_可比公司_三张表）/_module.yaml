@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: agent_core/quantlib/valuation
+title: 估值模型与可审计结果工件（DCF/可比公司/三张表）
+scope:
+    - agent/src/quantlib/valuation/
+source_files: []
+depends_on: []
+related_to: []

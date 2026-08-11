@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: frontend/app_shell_routing
+title: 应用入口与路由配置
+scope:
+    - frontend/src/router.tsx
+    - frontend/src/main.tsx
+    - frontend/src/index.css
+source_files: []
+depends_on: []
+related_to:
+    - path: agent_core/channels/channelsui

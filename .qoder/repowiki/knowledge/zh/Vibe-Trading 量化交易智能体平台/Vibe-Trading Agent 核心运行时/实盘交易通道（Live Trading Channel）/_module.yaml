@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: agent_core/live_trading
+title: 实盘交易通道（Live Trading Channel）
+scope:
+    - agent/src/live/
+source_files: []
+depends_on: []
+related_to: []

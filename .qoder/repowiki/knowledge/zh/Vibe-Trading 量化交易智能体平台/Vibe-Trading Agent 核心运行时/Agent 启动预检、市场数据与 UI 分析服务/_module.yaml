@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: agent_core/root_modules
+title: Agent 启动预检、市场数据与 UI 分析服务
+scope:
+    - agent/src/ui_services.py
+    - agent/src/market_data.py
+    - agent/src/preflight.py
+    - agent/src/utils/
+source_files: []
+depends_on: []
+related_to:
+    - path: frontend/analytics_dashboard

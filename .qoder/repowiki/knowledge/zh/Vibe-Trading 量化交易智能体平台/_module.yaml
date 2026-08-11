@@ -1,0 +1,26 @@
+schema_version: 1
+module_path: ""
+title: Vibe-Trading 量化交易智能体平台
+scope:
+    - README.md
+    - CONTRIBUTING.md
+    - AGENT_CONTRIBUTOR_GUIDE.md
+    - CODE_OF_CONDUCT.md
+    - SECURITY.md
+    - .gitignore
+    - Dockerfile
+    - docker-compose.yml
+    - pyproject.toml
+    - requirements-lock.txt
+    - .dockerignore
+    - CHANGELOG.md
+    - LICENSE
+    - MANIFEST.in
+    - NOTICE
+    - README_ar.md
+    - README_ja.md
+    - README_ko.md
+    - README_zh.md
+source_files: []
+depends_on: []
+related_to: []

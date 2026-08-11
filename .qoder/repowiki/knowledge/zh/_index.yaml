@@ -1,0 +1,654 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: zh-CN
+branch: main
+nodes_managed: true
+exported_at: "2026-08-11T01:05:13Z"
+modules:
+    "":
+        dir_name: Vibe-Trading 量化交易智能体平台
+        title: Vibe-Trading 量化交易智能体平台
+        scope:
+            - README.md
+            - CONTRIBUTING.md
+            - AGENT_CONTRIBUTOR_GUIDE.md
+            - CODE_OF_CONDUCT.md
+            - SECURITY.md
+            - .gitignore
+            - Dockerfile
+            - docker-compose.yml
+            - pyproject.toml
+            - requirements-lock.txt
+            - .dockerignore
+            - CHANGELOG.md
+            - LICENSE
+            - MANIFEST.in
+            - NOTICE
+            - README_ar.md
+            - README_ja.md
+            - README_ko.md
+            - README_zh.md
+        source_files: []
+        children:
+            - agent_core
+            - backtest_engine
+            - ci_scripts
+            - cli
+            - desktop_electron
+            - frontend
+            - wiki_docs
+        depends_on: []
+        related_to: []
+    agent_core:
+        dir_name: Vibe-Trading Agent 核心运行时
+        title: Vibe-Trading Agent 核心运行时
+        scope:
+            - agent/src/
+        source_files: []
+        children:
+            - agent_core/agent_loop
+            - agent_core/api_routes
+            - agent_core/channels
+            - agent_core/factors_hypotheses
+            - agent_core/live_trading
+            - agent_core/memory_storage
+            - agent_core/openbb_bridge
+            - agent_core/providers_config_security
+            - agent_core/quantlib
+            - agent_core/root_modules
+            - agent_core/scheduled_research
+            - agent_core/session_goal_swarm
+            - agent_core/shadow_account
+            - agent_core/skills_registry
+            - agent_core/strategy_store
+            - agent_core/tools
+            - agent_core/trading_connectors
+        depends_on: []
+        related_to: []
+    agent_core/agent_loop:
+        dir_name: Agent ReAct 循环与运行执行核心
+        title: Agent ReAct 循环与运行执行核心
+        scope:
+            - agent/src/agent/
+            - agent/src/core/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    agent_core/api_routes:
+        dir_name: FastAPI HTTP 路由与认证中间件
+        title: FastAPI HTTP 路由与认证中间件
+        scope:
+            - agent/src/api/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/providers_config_security
+            - path: cli
+            - path: desktop_electron
+            - path: frontend/shared_infrastructure
+    agent_core/channels:
+        dir_name: 多渠道 IM 接入与 WebUI 网关
+        title: 多渠道 IM 接入与 WebUI 网关
+        scope:
+            - agent/src/channels/
+            - agent/src/channelsui/
+        source_files: []
+        children:
+            - agent_core/channels/channel_runtime
+            - agent_core/channels/channelsui
+            - agent_core/channels/messaging_adapters
+        depends_on: []
+        related_to: []
+    agent_core/channels/channel_runtime:
+        dir_name: IM 渠道运行时与消息总线
+        title: IM 渠道运行时与消息总线
+        scope:
+            - agent/src/channels/bus/
+            - agent/src/channels/pairing/
+            - agent/src/channels/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/channels/messaging_adapters
+            - path: agent_core/live_trading/runtime
+            - path: agent_core/session_goal_swarm/session
+    agent_core/channels/channelsui:
+        dir_name: WebSocket Channel WebUI 兼容层
+        title: WebSocket Channel WebUI 兼容层
+        scope:
+            - agent/src/channelsui/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: frontend/app_shell_routing
+    agent_core/channels/messaging_adapters:
+        dir_name: 多渠道消息适配器集合
+        title: 多渠道消息适配器集合
+        scope:
+            - agent/src/channels/dingtalk.py
+            - agent/src/channels/discord.py
+            - agent/src/channels/email.py
+            - agent/src/channels/feishu.py
+            - agent/src/channels/matrix.py
+            - agent/src/channels/mochat.py
+            - agent/src/channels/msteams.py
+            - agent/src/channels/napcat.py
+            - agent/src/channels/qq.py
+            - agent/src/channels/slack.py
+            - agent/src/channels/telegram.py
+            - agent/src/channels/websocket.py
+            - agent/src/channels/wecom.py
+            - agent/src/channels/weixin.py
+            - agent/src/channels/whatsapp.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/channels/channel_runtime
+    agent_core/factors_hypotheses:
+        dir_name: Alpha Zoo 因子库与研究假设注册中心
+        title: Alpha Zoo 因子库与研究假设注册中心
+        scope:
+            - agent/src/factors/
+            - agent/src/hypotheses/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: frontend/alpha_zoo
+    agent_core/live_trading:
+        dir_name: 实盘交易通道（Live Trading Channel）
+        title: 实盘交易通道（Live Trading Channel）
+        scope:
+            - agent/src/live/
+        source_files: []
+        children:
+            - agent_core/live_trading/advisory
+            - agent_core/live_trading/core_guards
+            - agent_core/live_trading/mandate
+            - agent_core/live_trading/runtime
+        depends_on: []
+        related_to: []
+    agent_core/live_trading/advisory:
+        dir_name: 盘前风控建议与订单意图提取器
+        title: 盘前风控建议与订单意图提取器
+        scope:
+            - agent/src/live/advisory/
+            - agent/src/live/extractors/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/live_trading/core_guards
+            - path: agent_core/live_trading/runtime
+    agent_core/live_trading/core_guards:
+        dir_name: Live Trading Runtime & Enforcement Guards
+        title: Live Trading Runtime & Enforcement Guards
+        scope:
+            - agent/src/live/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/live_trading/advisory
+            - path: agent_core/live_trading/mandate
+            - path: agent_core/live_trading/runtime
+    agent_core/live_trading/mandate:
+        dir_name: 实盘交易授权边界（Mandate）
+        title: 实盘交易授权边界（Mandate）
+        scope:
+            - agent/src/live/mandate/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/live_trading/core_guards
+            - path: agent_core/live_trading/runtime
+    agent_core/live_trading/runtime:
+        dir_name: 持久化实盘交易运行时（调度_心跳_对账_触发器）
+        title: 持久化实盘交易运行时（调度/心跳/对账/触发器）
+        scope:
+            - agent/src/live/runtime/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/channels/channel_runtime
+            - path: agent_core/live_trading/advisory
+            - path: agent_core/live_trading/core_guards
+            - path: agent_core/live_trading/mandate
+    agent_core/memory_storage:
+        dir_name: 持久化记忆、实体模型与治理账本
+        title: 持久化记忆、实体模型与治理账本
+        scope:
+            - agent/src/memory/
+            - agent/src/entities/
+            - agent/src/governance/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/session_goal_swarm/goal
+            - path: agent_core/session_goal_swarm/session
+    agent_core/openbb_bridge:
+        dir_name: OpenBB Workspace 桥接适配器
+        title: OpenBB Workspace 桥接适配器
+        scope:
+            - agent/src/openbb_bridge/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/session_goal_swarm/session
+    agent_core/providers_config_security:
+        dir_name: LLM 提供商适配、Agent 配置与安全扫描
+        title: LLM 提供商适配、Agent 配置与安全扫描
+        scope:
+            - agent/src/providers/
+            - agent/src/config/
+            - agent/src/security/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/api_routes
+    agent_core/quantlib:
+        dir_name: 量化金融数学原语库（quantlib）
+        title: 量化金融数学原语库（quantlib）
+        scope:
+            - agent/src/quantlib/
+        source_files: []
+        children:
+            - agent_core/quantlib/attribution_credit_impact
+            - agent_core/quantlib/fixed_income_options
+            - agent_core/quantlib/risk_performance
+            - agent_core/quantlib/timeseries_stats
+            - agent_core/quantlib/valuation
+        depends_on: []
+        related_to: []
+    agent_core/quantlib/attribution_credit_impact:
+        dir_name: 量化归因、信用风险与市场冲击模型
+        title: 量化归因、信用风险与市场冲击模型
+        scope:
+            - agent/src/quantlib/attribution.py
+            - agent/src/quantlib/credit.py
+            - agent/src/quantlib/impact.py
+            - agent/src/quantlib/factormodel.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: backtest_engine/core_runner_and_metrics
+    agent_core/quantlib/fixed_income_options:
+        dir_name: 固定收益、期权与私募基金数学库
+        title: 固定收益、期权与私募基金数学库
+        scope:
+            - agent/src/quantlib/fixedincome.py
+            - agent/src/quantlib/options.py
+            - agent/src/quantlib/fundmath.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    agent_core/quantlib/risk_performance:
+        dir_name: 风险度量、绩效归因与VaR回测验证
+        title: 风险度量、绩效归因与VaR回测验证
+        scope:
+            - agent/src/quantlib/risk.py
+            - agent/src/quantlib/performance.py
+            - agent/src/quantlib/var_backtest.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: backtest_engine/core_runner_and_metrics
+    agent_core/quantlib/timeseries_stats:
+        dir_name: 时间序列统计、事件研究与多重检验工具集
+        title: 时间序列统计、事件研究与多重检验工具集
+        scope:
+            - agent/src/quantlib/timeseries.py
+            - agent/src/quantlib/eventstudy.py
+            - agent/src/quantlib/multipletesting.py
+            - agent/src/quantlib/crossvalidation.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    agent_core/quantlib/valuation:
+        dir_name: 估值模型与可审计结果工件（DCF_可比公司_三张表）
+        title: 估值模型与可审计结果工件（DCF/可比公司/三张表）
+        scope:
+            - agent/src/quantlib/valuation/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    agent_core/root_modules:
+        dir_name: Agent 启动预检、市场数据与 UI 分析服务
+        title: Agent 启动预检、市场数据与 UI 分析服务
+        scope:
+            - agent/src/ui_services.py
+            - agent/src/market_data.py
+            - agent/src/preflight.py
+            - agent/src/utils/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: frontend/analytics_dashboard
+    agent_core/scheduled_research:
+        dir_name: 定时研究任务调度与持久化
+        title: 定时研究任务调度与持久化
+        scope:
+            - agent/src/scheduled_research/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: backtest_engine/core_runner_and_metrics
+    agent_core/session_goal_swarm:
+        dir_name: 会话-目标-多智能体编排层（Session_Goal_Swarm 协同）
+        title: 会话-目标-多智能体编排层（Session/Goal/Swarm 协同）
+        scope:
+            - agent/src/session/
+            - agent/src/goal/
+            - agent/src/swarm/
+        source_files: []
+        children:
+            - agent_core/session_goal_swarm/goal
+            - agent_core/session_goal_swarm/session
+            - agent_core/session_goal_swarm/swarm
+        depends_on: []
+        related_to: []
+    agent_core/session_goal_swarm/goal:
+        dir_name: 金融研究目标与证据账本（Goal Ledger）
+        title: 金融研究目标与证据账本（Goal Ledger）
+        scope:
+            - agent/src/goal/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/memory_storage
+    agent_core/session_goal_swarm/session:
+        dir_name: 会话生命周期与执行编排（Session & Agent Loop Orchestration）
+        title: 会话生命周期与执行编排（Session & Agent Loop Orchestration）
+        scope:
+            - agent/src/session/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/channels/channel_runtime
+            - path: agent_core/memory_storage
+            - path: agent_core/openbb_bridge
+    agent_core/session_goal_swarm/swarm:
+        dir_name: Swarm 多智能体 DAG 编排与执行引擎
+        title: Swarm 多智能体 DAG 编排与执行引擎
+        scope:
+            - agent/src/swarm/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    agent_core/shadow_account:
+        dir_name: Shadow Account — 交易模式提取与回测归因
+        title: Shadow Account — 交易模式提取与回测归因
+        scope:
+            - agent/src/shadow_account/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/strategy_store
+            - path: backtest_engine/core_runner_and_metrics
+    agent_core/skills_registry:
+        dir_name: 量化技能与策略知识库（Skills Registry）
+        title: 量化技能与策略知识库（Skills Registry）
+        scope:
+            - agent/src/skills/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/tools
+    agent_core/strategy_store:
+        dir_name: 策略与因子制品存储与衰减监控
+        title: 策略与因子制品存储与衰减监控
+        scope:
+            - agent/src/strategy_store/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/shadow_account
+    agent_core/tools:
+        dir_name: Agent 工具集与 MCP 远程工具适配
+        title: Agent 工具集与 MCP 远程工具适配
+        scope:
+            - agent/src/tools/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/skills_registry
+    agent_core/trading_connectors:
+        dir_name: 交易连接器聚合层（Broker Connectors）
+        title: 交易连接器聚合层（Broker Connectors）
+        scope:
+            - agent/src/trading/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    backtest_engine:
+        dir_name: 多市场回测引擎（数据-信号-执行-优化）
+        title: 多市场回测引擎（数据-信号-执行-优化）
+        scope:
+            - agent/backtest/
+        source_files: []
+        children:
+            - backtest_engine/core_runner_and_metrics
+            - backtest_engine/engines
+            - backtest_engine/loaders
+            - backtest_engine/optimizers
+        depends_on: []
+        related_to: []
+    backtest_engine/core_runner_and_metrics:
+        dir_name: 回测核心执行器与指标引擎
+        title: 回测核心执行器与指标引擎
+        scope:
+            - agent/backtest/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/quantlib/attribution_credit_impact
+            - path: agent_core/quantlib/risk_performance
+            - path: agent_core/scheduled_research
+            - path: agent_core/shadow_account
+            - path: backtest_engine/engines
+            - path: backtest_engine/loaders
+            - path: backtest_engine/optimizers
+    backtest_engine/engines:
+        dir_name: 多市场回测引擎集合
+        title: 多市场回测引擎集合
+        scope:
+            - agent/backtest/engines/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: backtest_engine/core_runner_and_metrics
+    backtest_engine/loaders:
+        dir_name: 多源行情数据加载器集合
+        title: 多源行情数据加载器集合
+        scope:
+            - agent/backtest/loaders/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: backtest_engine/core_runner_and_metrics
+    backtest_engine/optimizers:
+        dir_name: 投资组合权重优化器集合
+        title: 投资组合权重优化器集合
+        scope:
+            - agent/backtest/optimizers/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: backtest_engine/core_runner_and_metrics
+    ci_scripts:
+        dir_name: CI 代码安全门禁脚本集
+        title: CI 代码安全门禁脚本集
+        scope:
+            - tools/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    cli:
+        dir_name: Vibe-Trading 交互式 CLI 与子命令框架
+        title: Vibe-Trading 交互式 CLI 与子命令框架
+        scope:
+            - agent/cli/
+            - agent/scripts/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/api_routes
+    desktop_electron:
+        dir_name: Vibe-Trading Desktop Electron 宿主进程
+        title: Vibe-Trading Desktop Electron 宿主进程
+        scope:
+            - desktop/electron/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/api_routes
+    frontend:
+        dir_name: Vibe-Trading 前端应用
+        title: Vibe-Trading 前端应用
+        scope:
+            - frontend/
+        source_files: []
+        children:
+            - frontend/agent_runtime
+            - frontend/alpha_zoo
+            - frontend/analytics_dashboard
+            - frontend/app_shell_routing
+            - frontend/i18n_and_common_ui
+            - frontend/reports_and_scheduling
+            - frontend/settings_and_layout
+            - frontend/shared_infrastructure
+        depends_on: []
+        related_to: []
+    frontend/agent_runtime:
+        dir_name: Agent 运行时与聊天界面
+        title: Agent 运行时与聊天界面
+        scope:
+            - frontend/src/pages/Agent.tsx
+            - frontend/src/components/chat/
+            - frontend/src/stores/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    frontend/alpha_zoo:
+        dir_name: Alpha Zoo 与回测运行详情页（前端页面）
+        title: Alpha Zoo 与回测运行详情页（前端页面）
+        scope:
+            - frontend/src/pages/AlphaZoo.tsx
+            - frontend/src/pages/RunDetail.tsx
+            - frontend/src/pages/Home.tsx
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/factors_hypotheses
+    frontend/analytics_dashboard:
+        dir_name: 相关性分析与回测对比仪表盘
+        title: 相关性分析与回测对比仪表盘
+        scope:
+            - frontend/src/pages/Correlation.tsx
+            - frontend/src/pages/Compare.tsx
+            - frontend/src/components/charts/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/root_modules
+    frontend/app_shell_routing:
+        dir_name: 应用入口与路由配置
+        title: 应用入口与路由配置
+        scope:
+            - frontend/src/router.tsx
+            - frontend/src/main.tsx
+            - frontend/src/index.css
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/channels/channelsui
+    frontend/i18n_and_common_ui:
+        dir_name: 国际化与通用 UI 基础组件
+        title: 国际化与通用 UI 基础组件
+        scope:
+            - frontend/src/i18n/
+            - frontend/src/components/common/
+            - frontend/public/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    frontend/reports_and_scheduling:
+        dir_name: 回测报告、定时任务与运行时监控页面
+        title: 回测报告、定时任务与运行时监控页面
+        scope:
+            - frontend/src/pages/Reports.tsx
+            - frontend/src/pages/Scheduled.tsx
+            - frontend/src/pages/Runtime.tsx
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    frontend/settings_and_layout:
+        dir_name: 设置与全局布局
+        title: 设置与全局布局
+        scope:
+            - frontend/src/pages/Settings.tsx
+            - frontend/src/components/layout/
+            - frontend/src/components/settings/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    frontend/shared_infrastructure:
+        dir_name: 前端共享基础设施（API、SSE、主题与工具库）
+        title: 前端共享基础设施（API、SSE、主题与工具库）
+        scope:
+            - frontend/src/lib/
+            - frontend/src/hooks/
+            - frontend/src/types/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: agent_core/api_routes
+    wiki_docs:
+        dir_name: Vibe-Trading Wiki 静态站点与 Cloudflare Pages 函数
+        title: Vibe-Trading Wiki 静态站点与 Cloudflare Pages 函数
+        scope:
+            - wiki/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []

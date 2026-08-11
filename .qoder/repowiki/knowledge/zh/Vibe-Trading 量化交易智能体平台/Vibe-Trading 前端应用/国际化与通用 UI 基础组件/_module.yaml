@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: frontend/i18n_and_common_ui
+title: 国际化与通用 UI 基础组件
+scope:
+    - frontend/src/i18n/
+    - frontend/src/components/common/
+    - frontend/public/
+source_files: []
+depends_on: []
+related_to: []

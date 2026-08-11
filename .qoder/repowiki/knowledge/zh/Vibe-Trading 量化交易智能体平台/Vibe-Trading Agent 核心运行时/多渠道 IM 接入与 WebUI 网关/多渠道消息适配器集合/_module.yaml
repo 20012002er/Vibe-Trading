@@ -1,0 +1,23 @@
+schema_version: 1
+module_path: agent_core/channels/messaging_adapters
+title: 多渠道消息适配器集合
+scope:
+    - agent/src/channels/dingtalk.py
+    - agent/src/channels/discord.py
+    - agent/src/channels/email.py
+    - agent/src/channels/feishu.py
+    - agent/src/channels/matrix.py
+    - agent/src/channels/mochat.py
+    - agent/src/channels/msteams.py
+    - agent/src/channels/napcat.py
+    - agent/src/channels/qq.py
+    - agent/src/channels/slack.py
+    - agent/src/channels/telegram.py
+    - agent/src/channels/websocket.py
+    - agent/src/channels/wecom.py
+    - agent/src/channels/weixin.py
+    - agent/src/channels/whatsapp.py
+source_files: []
+depends_on: []
+related_to:
+    - path: agent_core/channels/channel_runtime

@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: agent_core/quantlib/timeseries_stats
+title: 时间序列统计、事件研究与多重检验工具集
+scope:
+    - agent/src/quantlib/timeseries.py
+    - agent/src/quantlib/eventstudy.py
+    - agent/src/quantlib/multipletesting.py
+    - agent/src/quantlib/crossvalidation.py
+source_files: []
+depends_on: []
+related_to: []

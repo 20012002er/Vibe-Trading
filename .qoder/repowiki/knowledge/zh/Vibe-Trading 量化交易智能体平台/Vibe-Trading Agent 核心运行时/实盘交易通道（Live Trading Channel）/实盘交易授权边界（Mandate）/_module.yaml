@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: agent_core/live_trading/mandate
+title: 实盘交易授权边界（Mandate）
+scope:
+    - agent/src/live/mandate/
+source_files: []
+depends_on: []
+related_to:
+    - path: agent_core/live_trading/core_guards
+    - path: agent_core/live_trading/runtime

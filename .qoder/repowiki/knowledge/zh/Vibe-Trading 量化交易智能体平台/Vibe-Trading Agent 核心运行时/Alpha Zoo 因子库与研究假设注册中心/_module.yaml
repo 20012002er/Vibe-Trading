@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: agent_core/factors_hypotheses
+title: Alpha Zoo 因子库与研究假设注册中心
+scope:
+    - agent/src/factors/
+    - agent/src/hypotheses/
+source_files: []
+depends_on: []
+related_to:
+    - path: frontend/alpha_zoo
