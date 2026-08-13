@@ -616,6 +616,12 @@ class GroundingLedger:
         # tools whose contract is a bare US ticker. "AAPL.US" in the answer then
         # names an instrument the run really handled.
         self._session_symbol_roots: set[str] = set()
+        # Resolver tool-call IDs seen in the current LLM batch. Used to detect
+        # the race where search_symbol and a consumer (e.g. get_market_data) are
+        # issued in the same batch — the resolver result cannot be consumed yet.
+        # Reset when batch_id changes (new LLM turn).
+        self._batch_resolver_call_ids: set[str] = set()
+        self._last_batch_id: int | None = None
 
         self._seed_symbols(user_message, source="user_message")
         self.persist()
@@ -671,6 +677,7 @@ class GroundingLedger:
         batch_authorized_symbols: Iterable[str],
         call_id: str,
         batch_identity_status: str | None = None,
+        batch_id: int | None = None,
     ) -> ToolAuthorization:
         """Authorize against identity state frozen before the whole LLM batch.
 
@@ -683,6 +690,9 @@ class GroundingLedger:
             batch_identity_status: Aggregate identity status from the same
                 pre-batch snapshot. Defaults to the current state for direct
                 callers outside the Agent loop.
+            batch_id: Monotonic batch counter from the agent loop. Used to
+                detect batch boundaries for the resolver-race guard on
+                get_market_data.
 
         Returns:
             An allow/block decision. Resolver calls are allowed but their result
@@ -691,11 +701,64 @@ class GroundingLedger:
         if tool_name == _RESOLVER_TOOL:
             self._identity_required = True
             self._buffer_output = True
+            # Track resolver call in current batch; also record the batch_id so
+            # subsequent calls in the same batch don't reset the tracker.
+            if batch_id is not None:
+                self._last_batch_id = batch_id
+            self._batch_resolver_call_ids.add(call_id)
             self._begin_resolution(str(arguments.get("query") or ""), call_id)
             return ToolAuthorization(allowed=True)
 
         if self._is_private_company_skill(tool_name, arguments):
             return self._authorize_private_company_skill()
+
+        # Read-only data tools that consume symbols from any source (screeners,
+        # research results, etc.) — they don't act on behalf of an identity so
+        # they must not be blocked by the resolver gate. The only cases where
+        # get_market_data is blocked:
+        #   1. A resolver was called in this same batch (result not yet available).
+        #   2. Identity is in a terminal bad state (ambiguous/conflicting/invalidated).
+        if tool_name == "get_market_data" and self._identity_required:
+            # Detect batch boundary via the monotonic batch_id from the agent
+            # loop. When it changes, reset the resolver tracker. When batch_id
+            # is None (direct callers outside the agent loop), reset every time
+            # since each call is effectively its own batch.
+            if batch_id is None or batch_id != self._last_batch_id:
+                self._batch_resolver_call_ids.clear()
+                self._last_batch_id = batch_id
+            # If search_symbol ran in this batch, block — its result isn't
+            # available to this batch's consumers yet.
+            if self._batch_resolver_call_ids:
+                return ToolAuthorization(
+                    allowed=False,
+                    error_code="identity_required",
+                    message=(
+                        "A resolver was called in this batch; its result cannot "
+                        "be consumed by get_market_data until the next batch."
+                    ),
+                    symbols=tuple(self._extract_symbol_arguments(arguments)),
+                )
+            # If identity is in a terminal bad state, block.
+            frozen_status = batch_identity_status or self.identity_status
+            if frozen_status in {"ambiguous", "conflicting", "invalidated"}:
+                return ToolAuthorization(
+                    allowed=False,
+                    error_code="identity_conflict",
+                    message=(
+                        f"Identity is {frozen_status}; cannot fetch market data "
+                        "until the conflict is resolved."
+                    ),
+                    symbols=tuple(self._extract_symbol_arguments(arguments)),
+                )
+            # When identity is locked, fall through to the standard mismatch
+            # check below (prevents silent venue aliasing like .SS → .SH).
+            # When not locked, allow freely — symbols may come from screeners
+            # or other non-resolver sources.
+            if frozen_status == "locked":
+                # Fall through to standard mismatch check.
+                pass
+            else:
+                return ToolAuthorization(allowed=True)
 
         if tool_name == "load_skill" and self._identity_required:
             frozen_status = batch_identity_status or self.identity_status

@@ -71,10 +71,23 @@ _NO_US = "__no_us__"
 # skipping Yahoo for these avoids a guaranteed 403 from mainland IPs.
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 
+# A-share code patterns that Yahoo cannot resolve:
+#   - Pure 6-digit codes: 510300, 159337, 600519, 000300
+#   - suffixed codes:     000300.SH, 510300.SS, 300750.SZ, 831799.BJ
+_ASHARE_CODE_RE = re.compile(
+    r"^\d{6}(?:\.(?:SH|SZ|BJ|SS))?$"
+)
+
 
 def _is_china_query(query: str) -> bool:
-    """Return True when *query* contains Chinese characters."""
-    return bool(_CJK_RE.search(query))
+    """Return True when *query* is a China-market name or code.
+
+    Catches Chinese-character names (沪深300, 半导体ETF) **and** pure-digit
+    A-share codes (510300, 159337) or suffixed codes (000300.SH).
+    """
+    if _CJK_RE.search(query):
+        return True
+    return bool(_ASHARE_CODE_RE.match(query.strip()))
 
 
 class SymbolSearchTool(BaseTool):

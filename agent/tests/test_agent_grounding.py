@@ -297,7 +297,13 @@ def test_market_sensitive_skill_waits_for_prior_identity_batch(
 def test_bare_us_ticker_is_allowed_only_for_explicit_transport_contract(
     tmp_path: Path,
 ) -> None:
-    """SEC's bare ticker consumes AAPL.US without permitting venue aliases."""
+    """SEC's bare ticker consumes AAPL.US without permitting venue aliases.
+
+    get_market_data is exempt from the identity gate when identity is NOT
+    locked (symbols may come from screeners). But when identity IS locked
+    (user explicitly named AAPL.US), the standard mismatch check still applies
+    — a bare "AAPL" does not match the locked "AAPL.US" identity.
+    """
     ledger = GroundingLedger(
         run_dir=tmp_path,
         user_message="请分析 AAPL.US 的价格",
@@ -309,6 +315,7 @@ def test_bare_us_ticker_is_allowed_only_for_explicit_transport_contract(
         batch_authorized_symbols=ledger.authorized_symbols,
         call_id="sec",
     )
+    # Identity is locked (AAPL.US from user message); bare "AAPL" mismatches.
     market_alias = ledger.authorize_tool_call(
         "get_market_data",
         {"codes": ["AAPL"]},
@@ -322,7 +329,12 @@ def test_bare_us_ticker_is_allowed_only_for_explicit_transport_contract(
 
 
 def test_stale_history_identity_does_not_unlock_new_subject(tmp_path: Path) -> None:
-    """A previous turn's AAPL identity cannot authorize a SpaceX price request."""
+    """A previous turn's AAPL identity cannot authorize a SpaceX price request.
+
+    The stale identity is correctly ignored (authorized_symbols is empty), but
+    get_market_data is a read-only data tool and is exempt from the identity
+    gate — it may fetch data regardless of identity state.
+    """
     ledger = GroundingLedger(
         run_dir=tmp_path,
         user_message="SpaceX 在什么价格买入比较合适？",
@@ -337,8 +349,8 @@ def test_stale_history_identity_does_not_unlock_new_subject(tmp_path: Path) -> N
     )
 
     assert ledger.authorized_symbols == set()
-    assert authorization.allowed is False
-    assert authorization.error_code == "identity_required"
+    # get_market_data is exempt from identity gate (read-only data tool).
+    assert authorization.allowed is True
 
 
 def test_single_clean_not_found_source_is_not_enough_for_private_routing(

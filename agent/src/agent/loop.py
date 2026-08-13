@@ -1270,6 +1270,7 @@ class AgentLoop:
                     batch_authorized_symbols=batch_authorized_symbols,
                     call_id=tc.id,
                     batch_identity_status=batch_identity_status,
+                    batch_id=iteration,
                 )
                 if not authorization.allowed:
                     execution_plan.append(
