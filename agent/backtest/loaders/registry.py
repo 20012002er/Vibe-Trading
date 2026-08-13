@@ -130,16 +130,19 @@ _NO_NETWORK_FALLBACK_SOURCES: frozenset[str] = frozenset({"local", "qveris"})  #
 
 # Chains are ordered by IP-ban risk first (lighter, throttle-tolerant public
 # endpoints lead; key-gated REST and rate-limit-prone sources trail), then by
-# data quality. Eastmoney/Sina/Stooq/Yahoo are unauthenticated public sources
-# that must be politely throttled; Finnhub/AlphaVantage/Tiingo/FMP are key-gated
-# REST fallbacks placed deeper in the chain.
+# data quality. Domestic Chinese sources (eastmoney/akshare/sina) are preferred
+# over yfinance for US/HK equity to avoid Yahoo rate-limit issues from mainland
+# IPs; yfinance is placed at the tail as a last resort.
 FALLBACK_CHAINS: dict[str, list[str]] = {
     "a_share":   ["tencent", "mootdx", "eastmoney", "baostock", "akshare", "tushare", "local"],
-    "us_equity": ["yahoo", "stooq", "sina", "eastmoney", "yfinance", "tiingo", "fmp", "finnhub", "alphavantage", "longbridge", "akshare", "local"],
+    # US: yahoo public endpoint leads (no SDK rate-limit); domestic Chinese
+    # sources (eastmoney/akshare/sina) precede yfinance to avoid Yahoo
+    # rate-limit from mainland IPs; yfinance moved to tail.
+    "us_equity": ["yahoo", "eastmoney", "akshare", "sina", "stooq", "tiingo", "fmp", "finnhub", "alphavantage", "longbridge", "local", "yfinance"],
     # HK: tencent leads (no observed IP ban); akshare (Eastmoney-backed)
     # precedes the Yahoo-SDK family, which is blocked from mainland IPs;
-    # tushare hk_daily is key-gated.
-    "hk_equity": ["tencent", "eastmoney", "yahoo", "futu", "akshare", "yfinance", "tushare", "longbridge", "local"],
+    # yfinance moved to tail for the same mainland rate-limit reason.
+    "hk_equity": ["tencent", "eastmoney", "akshare", "yahoo", "futu", "sina", "stooq", "tushare", "longbridge", "local", "yfinance"],
     "india_equity": ["yahoo", "yfinance", "india_broker", "local"],
     "kr_equity":   ["pykrx", "yahoo", "yfinance", "local"],
     # TSX (.TO) / TSX Venture (.V): direct Yahoo first, SDK fallback second.

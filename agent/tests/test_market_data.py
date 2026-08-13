@@ -338,14 +338,14 @@ def test_fetch_auto_india_walks_india_chain() -> None:
 
 
 def test_fetch_auto_us_still_walks_us_chain() -> None:
-    """US routing is unchanged by the market-aware chain selection."""
+    """US chain now prioritises domestic sources (eastmoney/akshare) over yfinance."""
     from backtest.loaders.base import NoAvailableSourceError
 
     attempts: list[str] = []
 
     def resolver(src: str):
         attempts.append(src)
-        if src == "stooq":
+        if src == "eastmoney":
             return _StubLoader
         raise NoAvailableSourceError(f"{src} unavailable in test")
 
@@ -356,7 +356,7 @@ def test_fetch_auto_us_still_walks_us_chain() -> None:
         source="auto",
         loader_resolver=resolver,
     )
-    assert attempts[:2] == ["yahoo", "stooq"]
+    assert attempts[:2] == ["yahoo", "eastmoney"]
     assert "_unresolved" not in out
     assert "AAPL.US" in out
 

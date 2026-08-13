@@ -152,26 +152,28 @@ class TestFallbackChains:
         assert FALLBACK_CHAINS["crypto"][:3] == ["okx", "binance", "ccxt"]
 
     def test_chains_ordered_by_ip_ban_risk(self) -> None:
-        """Equity chains lead with throttle-tolerant public sources and trail
-        with key-gated REST fallbacks, in the exact reviewed order."""
+        """Equity chains lead with throttle-tolerant public sources, prefer
+        domestic Chinese sources over yfinance, and trail with key-gated REST."""
         assert FALLBACK_CHAINS["a_share"] == [
             "tencent", "mootdx", "eastmoney", "baostock", "akshare", "tushare", "local",
         ]
         assert FALLBACK_CHAINS["us_equity"] == [
-            "yahoo", "stooq", "sina", "eastmoney", "yfinance", "tiingo", "fmp",
-            "finnhub", "alphavantage", "longbridge", "akshare", "local",
+            "yahoo", "eastmoney", "akshare", "sina", "stooq", "tiingo", "fmp",
+            "finnhub", "alphavantage", "longbridge", "local", "yfinance",
         ]
         assert FALLBACK_CHAINS["hk_equity"] == [
-            "tencent", "eastmoney", "yahoo", "futu", "akshare", "yfinance", "tushare", "longbridge", "local",
+            "tencent", "eastmoney", "akshare", "yahoo", "futu", "sina", "stooq", "tushare", "longbridge", "local", "yfinance",
         ]
 
     def test_us_equity_includes_sina_fallback(self) -> None:
-        """'sina' must be reachable for US equities (after yahoo/stooq) so it is
-        not a dead config source that no chain can ever select."""
+        """'sina' must be reachable for US equities; domestic sources (eastmoney,
+        akshare, sina) all precede yfinance to avoid Yahoo rate-limit."""
         chain = FALLBACK_CHAINS["us_equity"]
         assert "sina" in chain
         assert chain.index("sina") > chain.index("yahoo")
-        assert chain.index("sina") > chain.index("stooq")
+        assert chain.index("eastmoney") < chain.index("yfinance")
+        assert chain.index("akshare") < chain.index("yfinance")
+        assert chain.index("sina") < chain.index("yfinance")
 
     def test_a_share_includes_baostock(self) -> None:
         """'baostock' must remain a reachable A-share fallback."""
