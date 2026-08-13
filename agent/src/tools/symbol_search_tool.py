@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 from backtest.loaders import eastmoney_client, sec_edgar_client, yahoo_client
@@ -64,6 +65,16 @@ _PER_SOURCE_CAP = 25
 # Sentinel for "no U.S. candidate, SEC was not consulted" so the caller can omit
 # the ``sec_edgar`` source entry entirely.
 _NO_US = "__no_us__"
+
+# CJK Unified Ideographs range — queries containing Chinese characters are
+# almost certainly China-market names that Yahoo Finance cannot resolve;
+# skipping Yahoo for these avoids a guaranteed 403 from mainland IPs.
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+
+
+def _is_china_query(query: str) -> bool:
+    """Return True when *query* contains Chinese characters."""
+    return bool(_CJK_RE.search(query))
 
 
 class SymbolSearchTool(BaseTool):
@@ -131,8 +142,11 @@ class SymbolSearchTool(BaseTool):
         em_hits, sources["eastmoney"] = _search_eastmoney(query)
         candidates.extend(em_hits)
 
-        yh_hits, sources["yahoo"] = _search_yahoo(query)
-        candidates.extend(yh_hits)
+        if _is_china_query(query):
+            sources["yahoo"] = "skipped (china-only query)"
+        else:
+            yh_hits, sources["yahoo"] = _search_yahoo(query)
+            candidates.extend(yh_hits)
 
         merged = _merge_candidates(candidates)
         merged, sources["sec_edgar"] = _enrich_us_cik(merged)
