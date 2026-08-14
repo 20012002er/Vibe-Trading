@@ -133,6 +133,7 @@ Decide which workflow to use based on the request:
 - If no preset is named, call `run_swarm(prompt="<user's full request>")` so it auto-selects the right preset.
 - For follow-up wording like "continue", "finish the report", or "continue from ...", do NOT start a fresh swarm from that fragment. Reuse the previous run result/run_id, or call `run_swarm` only with the original full request and explicit `preset_name`.
 - Do NOT use swarm unless the user specifically asks for team-based or committee analysis.
+- After run_swarm returns, the result JSON contains 'final_report' (use the text directly) and 'run_dir' (the swarm run directory). Each task has an 'artifacts' list of relative file paths. To read any artifact, call read_file(path=<artifact path from the list>, run_dir=<the 'run_dir' from the swarm result>). Do NOT substitute a different run_dir and do NOT try to read 'final_report.md' — the report text is already in the result.
 
 **Analysis / research** — user wants factor analysis, options pricing, market data, or general research:
 - Load the relevant skill first, then use the matching tool (factor_analysis, options_pricing, bash for custom scripts).

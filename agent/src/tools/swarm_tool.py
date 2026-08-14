@@ -677,7 +677,12 @@ class SwarmTool(BaseTool):
         "Provide a natural language prompt and, when known, an explicit preset_name from agent/src/swarm/presets "
         "(e.g. equity_research_team, quant_strategy_desk, global_allocation_committee, risk_committee) "
         "so follow-up/continuation prompts do not lose routing context. "
-        "Example: run_swarm(prompt='Analyze A-share new energy opportunities for Q2 2026', preset_name='equity_research_team')"
+        "Example: run_swarm(prompt='Analyze A-share new energy opportunities for Q2 2026', preset_name='equity_research_team'). "
+        "IMPORTANT — reading swarm results: "
+        "(1) The result JSON contains 'final_report' (full text report, use directly — do NOT try to read a 'final_report.md' file). "
+        "(2) Each task has an 'artifacts' list of relative file paths (CSV, JSON, MD, etc.). "
+        "(3) To read any artifact, call read_file with path=<artifact relative path> and run_dir=<the 'run_dir' field from this result>. "
+        "(4) The 'run_dir' in this result is the swarm run directory — use it as-is, do NOT substitute a different run_dir."
     )
     parameters = {
         "type": "object",
@@ -895,6 +900,17 @@ def _format_result(
     # itself is still progressing in the background. Surface the run's real
     # status so a downstream agent can re-invoke with the run_id (or end its
     # turn with a "still working" message) instead of treating it as failure.
+    # Build a human-readable hint so the agent knows exactly how to call read_file
+    # for artifacts without guessing the wrong run_dir or fabricating file names.
+    artifact_examples = []
+    for ts in task_summaries[:3]:
+        for art in (ts.get("artifacts") or [])[:2]:
+            artifact_examples.append(f"  read_file(path='{art}', run_dir='{run_dir}')")
+            if len(artifact_examples) >= 3:
+                break
+        if len(artifact_examples) >= 3:
+            break
+
     result = {
         "status": run.status.value,
         "wait_budget_exhausted": timed_out,
@@ -909,6 +925,13 @@ def _format_result(
             "total_input_tokens": run.total_input_tokens,
             "total_output_tokens": run.total_output_tokens,
         },
+        "artifact_read_hint": (
+            f"Use run_dir='{run_dir}' as the run_dir parameter when calling read_file. "
+            "The 'final_report' field above already contains the full text report — use it directly, "
+            "do NOT try to read a 'final_report.md' file. "
+            "For artifact files (CSV, JSON, etc.), call read_file with the relative path from each task's 'artifacts' list. "
+            + ("Examples:\n" + "\n".join(artifact_examples) if artifact_examples else "")
+        ),
     }
     return json.dumps(result, ensure_ascii=False, indent=2)
 
