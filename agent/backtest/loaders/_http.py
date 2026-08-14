@@ -23,8 +23,10 @@ import random
 import threading
 import time
 from typing import Any
+from urllib3.exceptions import ProtocolError
 
 import requests
+from requests.exceptions import ConnectionError, Timeout
 
 from backtest.loaders.base import positive_env_float
 
@@ -41,6 +43,11 @@ DEFAULT_USER_AGENT = (
 # minimum interval, so parallel callers de-synchronize instead of all firing
 # the instant the interval elapses.
 _JITTER_MAX_S = 0.4
+
+# Retry configuration for transient network errors.
+_MAX_RETRIES = 2
+_RETRY_BACKOFF_BASE = 1.0  # seconds, doubled each retry
+_RETRYABLE_EXCEPTIONS = (ConnectionError, Timeout, ProtocolError)
 
 
 class HostThrottle:
@@ -125,8 +132,12 @@ def throttled_get(
     params: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
     timeout: float = 15.0,
+    max_retries: int = _MAX_RETRIES,
 ) -> requests.Response:
     """GET ``url`` after waiting out the per-host minimum interval.
+
+    Retries transient network errors (connection resets, timeouts) with
+    exponential backoff to survive brief server-side hiccups.
 
     Args:
         url: Fully-qualified request URL.
@@ -136,6 +147,7 @@ def throttled_get(
         params: Optional query parameters.
         headers: Optional headers merged over the default browser UA.
         timeout: Per-request socket timeout in seconds.
+        max_retries: Number of retry attempts after the first failure.
 
     Returns:
         The :class:`requests.Response`; the caller decides how to parse it.
@@ -149,7 +161,28 @@ def throttled_get(
         merged_headers.update(headers)
     _THROTTLE.wait(host_key, min_interval)
     session = _session_for(host_key)
-    return session.get(url, params=params, headers=merged_headers, timeout=timeout)
+
+    last_exc: Exception | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            return session.get(url, params=params, headers=merged_headers, timeout=timeout)
+        except _RETRYABLE_EXCEPTIONS as exc:
+            last_exc = exc
+            if attempt < max_retries:
+                backoff = _RETRY_BACKOFF_BASE * (2 ** attempt) + random.uniform(0, 0.3)
+                logger.info(
+                    "throttled_get retry %d/%d for %s after %s: %s",
+                    attempt + 1, max_retries, host_key, type(exc).__name__, exc,
+                )
+                time.sleep(backoff)
+                # Re-wait for throttle spacing before retry.
+                _THROTTLE.wait(host_key, min_interval)
+            else:
+                logger.warning(
+                    "throttled_get exhausted retries for %s: %s",
+                    host_key, exc,
+                )
+    raise last_exc  # type: ignore[misc]
 
 
 def throttled_get_json(
