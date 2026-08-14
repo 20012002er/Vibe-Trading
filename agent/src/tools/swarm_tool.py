@@ -896,10 +896,6 @@ def _format_result(
     # The path is ~/.vibe-trading/swarm/runs/{run_id}/
     run_dir = str(swarm_runs_root() / run.id)
 
-    # ``timed_out`` only means the SwarmTool's wait budget elapsed — the run
-    # itself is still progressing in the background. Surface the run's real
-    # status so a downstream agent can re-invoke with the run_id (or end its
-    # turn with a "still working" message) instead of treating it as failure.
     # Build a human-readable hint so the agent knows exactly how to call read_file
     # for artifacts without guessing the wrong run_dir or fabricating file names.
     artifact_examples = []
@@ -911,11 +907,29 @@ def _format_result(
         if len(artifact_examples) >= 3:
             break
 
+    artifact_read_hint = (
+        f"Use run_dir='{run_dir}' as the run_dir parameter when calling read_file. "
+        "The 'final_report' field below already contains the full text report — use it directly, "
+        "do NOT try to read a 'final_report.md' file. "
+        "For artifact files (CSV, JSON, etc.), call read_file with the relative path from each task's 'artifacts' list. "
+        + ("Examples:\n" + "\n".join(artifact_examples) if artifact_examples else "")
+    )
+
+    # ``timed_out`` only means the SwarmTool's wait budget elapsed — the run
+    # itself is still progressing in the background. Surface the run's real
+    # status so a downstream agent can re-invoke with the run_id (or end its
+    # turn with a "still working" message) instead of treating it as failure.
+    #
+    # IMPORTANT: ``artifact_read_hint`` is placed BEFORE ``final_report`` in the
+    # JSON output because tool results are truncated at 10,000 characters
+    # (TOOL_RESULT_LIMIT). The hint must survive truncation so the agent knows
+    # how to read artifacts even when the full report is cut off.
     result = {
         "status": run.status.value,
         "wait_budget_exhausted": timed_out,
         "run_id": run.id,
         "run_dir": run_dir,
+        "artifact_read_hint": artifact_read_hint,
         "preset": preset,
         "auto_variables": variables,
         "final_report": run.final_report or "",
@@ -925,13 +939,6 @@ def _format_result(
             "total_input_tokens": run.total_input_tokens,
             "total_output_tokens": run.total_output_tokens,
         },
-        "artifact_read_hint": (
-            f"Use run_dir='{run_dir}' as the run_dir parameter when calling read_file. "
-            "The 'final_report' field above already contains the full text report — use it directly, "
-            "do NOT try to read a 'final_report.md' file. "
-            "For artifact files (CSV, JSON, etc.), call read_file with the relative path from each task's 'artifacts' list. "
-            + ("Examples:\n" + "\n".join(artifact_examples) if artifact_examples else "")
-        ),
     }
     return json.dumps(result, ensure_ascii=False, indent=2)
 

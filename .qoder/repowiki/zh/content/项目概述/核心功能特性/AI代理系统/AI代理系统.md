@@ -12,7 +12,20 @@
 - [skills.py](file://agent/src/agent/skills.py)
 - [service.py](file://agent/src/session/service.py)
 - [__init__.py](file://agent/src/tools/__init__.py)
+- [path_utils.py](file://agent/src/tools/path_utils.py)
+- [web_reader_tool.py](file://agent/src/tools/web_reader_tool.py)
+- [edit_file_tool.py](file://agent/src/tools/edit_file_tool.py)
+- [bash_tool.py](file://agent/src/tools/bash_tool.py)
+- [remember_tool.py](file://agent/src/tools/remember_tool.py)
+- [goal_tool.py](file://agent/src/tools/goal_tool.py)
 </cite>
+
+## 更新摘要
+**变更内容**
+- 增强了上下文构建器的工具描述生成功能，提供更清晰的工具安全上下文
+- 改进了工具参数描述的格式化和安全提示
+- 更新了路径安全验证和沙箱机制的文档说明
+- 完善了工具调用流程中的安全控制说明
 
 ## 目录
 1. [简介](#简介)
@@ -35,7 +48,7 @@
 - 与 LLM 提供商的集成方式、流式推理与重试
 - 性能优化策略、故障排查与最佳实践
 
-该系统通过“五层上下文压缩”、“并行只读工具执行”、“结构化摘要更新”、“跨会话持久记忆”和“安全沙箱化的工具白名单”，在长对话与复杂金融任务中保持稳定、可控与可追溯。
+该系统通过"五层上下文压缩"、"并行只读工具执行"、"结构化摘要更新"、"跨会话持久记忆"和"安全沙箱化的工具白名单"，在长对话与复杂金融任务中保持稳定、可控与可追溯。
 
 ## 项目结构
 围绕 AgentLoop 的核心代码位于 agent/src/agent，配合 providers、session、memory、tools 等模块构成完整闭环：
@@ -87,7 +100,7 @@ D --> K["LLM 工厂<br/>providers/llm.py"]
 - [loop.py:502-750](file://agent/src/agent/loop.py#L502-L750)
 - [context.py:210-322](file://agent/src/agent/context.py#L210-L322)
 - [tools.py:13-95](file://agent/src/agent/tools.py#L13-L95)
-- [chat.py:272-397](file://agent/src/providers/chat.py#L272-L397)
+- [chat.py:272-397](file://agent/src/providers/chat.py#L272-397)
 - [persistent.py:196-438](file://agent/src/memory/persistent.py#L196-L438)
 - [service.py:158-440](file://agent/src/session/service.py#L158-L440)
 
@@ -179,6 +192,8 @@ NextIter --> End(["结束或继续"])
 - 自动召回：根据用户消息检索相关记忆片段并注入
 - 工具结果与助手消息格式化：兼容 provider 差异（reasoning_content、tool_calls、extra_content）
 
+**更新** 改进了工具描述生成逻辑，现在包含更详细的参数说明和安全上下文信息，帮助 AI 代理更好地理解工具的使用限制和安全边界。
+
 ```mermaid
 classDiagram
 class ContextBuilder {
@@ -221,6 +236,8 @@ ContextBuilder --> SkillsLoader : "获取技能描述"
 - MCP 集成：
   - 按配置追加远程工具，失败隔离不影响本地工具
   - 实时券商通道受 mandate/kill switch 保护，未授权跳过
+
+**更新** 增强了工具描述的安全上下文，现在在工具描述中包含更明确的安全限制和使用约束，帮助 AI 代理做出更安全的选择。
 
 ```mermaid
 flowchart TD
@@ -303,12 +320,37 @@ ChatLLM --> LLMFactory : "获取底层模型"
 ```
 
 **图表来源**
-- [chat.py:272-397](file://agent/src/providers/chat.py#L272-L397)
+- [chat.py:272-397](file://agent/src/providers/chat.py#L272-397)
 - [llm.py:89-423](file://agent/src/providers/llm.py#L89-L423)
 
 **章节来源**
-- [chat.py:272-397](file://agent/src/providers/chat.py#L272-L397)
+- [chat.py:272-397](file://agent/src/providers/chat.py#L272-397)
 - [llm.py:89-423](file://agent/src/providers/llm.py#L89-L423)
+
+### 工具安全与路径验证
+**新增** 增强的工具安全机制确保 AI 代理只能在受控环境中执行操作：
+
+- **路径安全验证**：
+  - `safe_path()`：确保文件路径在工作区内
+  - `resolve_safe_path()`：支持运行时目录和允许根目录的回退机制
+  - `allowed_write_roots()`：配置可写入的目录白名单
+  - `safe_run_dir()`：验证运行目录的合法性
+
+- **网络请求安全**：
+  - URL 白名单验证，阻止内网地址和私有 IP
+  - 协议限制，仅允许 http/https
+  - 敏感信息过滤，移除用户名密码
+
+- **文件系统安全**：
+  - UNC 路径阻止
+  - 路径逃逸检测
+  - 工作区边界保护
+
+**章节来源**
+- [path_utils.py:46-74](file://agent/src/tools/path_utils.py#L46-L74)
+- [path_utils.py:185-240](file://agent/src/tools/path_utils.py#L185-L240)
+- [web_reader_tool.py:24-58](file://agent/src/tools/web_reader_tool.py#L24-L58)
+- [edit_file_tool.py:45-51](file://agent/src/tools/edit_file_tool.py#L45-L51)
 
 ## 依赖关系分析
 - AgentLoop 依赖：
@@ -370,12 +412,10 @@ AL --> GROUND["GroundingLedger"]
   - 重要性衰减与去重窗口，减少冗余写入
   - FTS 搜索与语义链接，加速召回
 
-[本节为通用指导，无需特定文件来源]
-
 ## 故障排除指南
 - 工具不可用：
   - 检查 check_available 返回（依赖缺失、API Key 未配置）
-  - 查看日志中的“工具不可用，跳过”
+  - 查看日志中的"工具不可用，跳过"
 - 会话忙：
   - 同一会话不允许并发 send_message，先取消或等待完成
 - 流式失败：
@@ -387,23 +427,26 @@ AL --> GROUND["GroundingLedger"]
   - 文件锁超时、权限问题，检查磁盘与路径
 - MCP 连接失败：
   - 单个服务器失败不影响其他工具，查看警告日志
+- **路径安全错误**：
+  - 检查文件路径是否在允许的根目录下
+  - 确认运行目录配置正确
+  - 验证 UNC 路径不被接受
 
 **章节来源**
 - [__init__.py:136-154](file://agent/src/tools/__init__.py#L136-L154)
 - [service.py:43-50](file://agent/src/session/service.py#L43-L50)
 - [chat.py:117-163](file://agent/src/providers/chat.py#L117-L163)
 - [persistent.py:42-73](file://agent/src/memory/persistent.py#L42-L73)
+- [path_utils.py:238-240](file://agent/src/tools/path_utils.py#L238-L240)
 
 ## 结论
 Vibe-Trading 的 AI 代理系统通过 ReAct 循环、分层上下文管理、安全工具注册与发现、跨会话持久记忆以及健壮的 LLM 集成，实现了高可用、可扩展且可追溯的智能研究与策略开发平台。其设计兼顾了性能、安全与可维护性，适合复杂的金融分析与自动化交易研究场景。
-
-[本节为总结，无需特定文件来源]
 
 ## 附录：使用示例与最佳实践
 
 ### 自然语言驱动的研究与策略开发
 - 步骤概览：
-  1. 描述需求（如“分析某股票近一年走势并生成均值回归策略”）
+  1. 描述需求（如"分析某股票近一年走势并生成均值回归策略"）
   2. Agent 自动识别任务类型，加载对应技能（如 strategy-generate）
   3. 生成策略代码与配置，执行回测
   4. 输出指标（收益率、夏普、最大回撤、交易次数）
@@ -413,7 +456,7 @@ Vibe-Trading 的 AI 代理系统通过 ReAct 循环、分层上下文管理、�
 - 注意事项：
   - 每个数字必须指向具体工具调用
   - 标注数据截止时间与来源
-  - 若工具失败，明确说明“未获取到”或“覆盖率截止于某日期”
+  - 若工具失败，明确说明"未获取到"或"覆盖率截止于某日期"
 
 **章节来源**
 - [context.py:23-200](file://agent/src/agent/context.py#L23-L200)
@@ -432,10 +475,12 @@ Vibe-Trading 的 AI 代理系统通过 ReAct 循环、分层上下文管理、�
 - Shell 工具默认禁用，需显式启用
 - 实时券商通道需授权，未授权跳过并告警
 - 工具参数校验与结果截断，防止溢出与泄露
+- **路径安全验证**：所有文件操作都经过严格的路径验证，确保不会访问工作区外的文件
 
 **章节来源**
 - [__init__.py:136-154](file://agent/src/tools/__init__.py#L136-L154)
 - [__init__.py:174-244](file://agent/src/tools/__init__.py#L174-L244)
+- [path_utils.py:46-74](file://agent/src/tools/path_utils.py#L46-L74)
 
 ### 性能优化建议
 - 合理设置 token 阈值，平衡上下文长度与成本
@@ -443,4 +488,13 @@ Vibe-Trading 的 AI 代理系统通过 ReAct 循环、分层上下文管理、�
 - 使用流式输出与推理节流，提升用户体验
 - 启用记忆衰减与去重，减少冗余写入
 
-[本节为通用指导，无需特定文件来源]
+### 安全最佳实践
+- **文件路径安全**：始终使用相对路径，避免绝对路径和路径遍历攻击
+- **网络请求安全**：只访问白名单中的域名，避免内网探测
+- **命令执行安全**：谨慎使用 bash 工具，避免执行危险命令
+- **内存管理**：及时释放大型对象，避免内存泄漏
+
+**章节来源**
+- [web_reader_tool.py:24-58](file://agent/src/tools/web_reader_tool.py#L24-L58)
+- [bash_tool.py:47-52](file://agent/src/tools/bash_tool.py#L47-L52)
+- [edit_file_tool.py:45-51](file://agent/src/tools/edit_file_tool.py#L45-L51)

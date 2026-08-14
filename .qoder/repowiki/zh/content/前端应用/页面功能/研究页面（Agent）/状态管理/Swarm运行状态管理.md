@@ -7,9 +7,18 @@
 - [agent/src/swarm/runtime.py](file://agent/src/swarm/runtime.py)
 - [agent/src/swarm/task_store.py](file://agent/src/swarm/task_store.py)
 - [agent/src/swarm/worker.py](file://agent/src/swarm/worker.py)
+- [agent/src/tools/swarm_tool.py](file://agent/src/tools/swarm_tool.py)
 - [agent/src/api/swarm_routes.py](file://agent/src/api/swarm_routes.py)
 - [frontend/src/stores/agent.ts](file://frontend/src/stores/agent.ts)
 </cite>
+
+## 更新摘要
+**变更内容**
+- 增强了Swarm工具的JSON结果结构，包含更详细的artifact访问指导
+- 改进了文件读取程序，提供正确的run_dir参数使用说明
+- 完善了多代理协作功能的故障排除指南
+- 添加了详细的artifact访问模式示例
+- 更新了WorkerResult数据结构以支持content_filter_warnings字段
 
 ## 目录
 1. [简介](#简介)
@@ -24,7 +33,7 @@
 10. [附录：API与事件速查](#附录api与事件速查)
 
 ## 简介
-本文件面向 Vibe-Trading 研究页面的“Swarm运行状态管理系统”，系统性说明多Swarm实例的状态隔离、状态更新机制、持久化策略，以及与消息系统（SSE）的集成方式。重点覆盖以下主题：
+本文件面向 Vibe-Trading 研究页面的"Swarm运行状态管理系统"，系统性说明多Swarm实例的状态隔离、状态更新机制、持久化策略，以及与消息系统（SSE）的集成方式。重点覆盖以下主题：
 - SwarmRunStatus 数据结构与生命周期
 - 多Swarm实例的状态隔离（按run_id分目录、任务独立存储）
 - 状态更新机制（reconcile_run、hydrate_run、原子写入、心跳检测）
@@ -32,6 +41,7 @@
 - 状态持久化策略（run.json、events.jsonl、tasks/*.json）
 - 运行监控、状态同步、冲突解决（Windows重命名重试、读取重试、幂等恢复）
 - 调试与故障排除（SSE断线、僵尸运行、任务阻塞、超时与内容过滤）
+- **新增**：增强的JSON结果结构和artifact访问模式
 
 ## 项目结构
 Swarm运行状态管理由后端运行时、持久化层、工作进程以及前端状态管理共同构成：
@@ -41,6 +51,7 @@ Swarm运行状态管理由后端运行时、持久化层、工作进程以及前
 - 工作进程：轻量ReAct循环、工具调用、心跳上报、摘要与产物输出
 - API路由：提供REST接口与SSE事件流，供前端查询与订阅
 - 前端状态：维护swarmRuns映射，支持upsert/update以增量更新UI
+- **新增**：SwarmTool提供增强的JSON结果结构和artifact访问指导
 
 ```mermaid
 graph TB
@@ -51,20 +62,23 @@ A --> D["Worker<br/>ReAct循环"]
 E["HTTP/SSE路由<br/>/swarm/runs*"] --> A
 E --> B
 E --> C
+F["SwarmTool<br/>JSON结果增强"] --> A
 end
 subgraph "前端"
-F["Zustand Store<br/>swarmRuns 映射"]
-G["页面组件<br/>列表/详情/事件流"]
+G["Zustand Store<br/>swarmRuns 映射"]
+H["页面组件<br/>列表/详情/事件流"]
 end
-F --> G
-E --> F
+G --> H
+E --> G
+F --> H
 ```
 
-图表来源
+**图表来源**
 - [agent/src/swarm/runtime.py:49-148](file://agent/src/swarm/runtime.py#L49-L148)
 - [agent/src/swarm/store.py:115-218](file://agent/src/swarm/store.py#L115-L218)
 - [agent/src/swarm/task_store.py:16-110](file://agent/src/swarm/task_store.py#L16-L110)
 - [agent/src/swarm/worker.py:297-758](file://agent/src/swarm/worker.py#L297-L758)
+- [agent/src/tools/swarm_tool.py:872-943](file://agent/src/tools/swarm_tool.py#L872-L943)
 - [agent/src/api/swarm_routes.py:91-211](file://agent/src/api/swarm_routes.py#L91-L211)
 - [frontend/src/stores/agent.ts:251-280](file://frontend/src/stores/agent.ts#L251-L280)
 
@@ -74,6 +88,7 @@ E --> F
 - [agent/src/swarm/runtime.py:49-751](file://agent/src/swarm/runtime.py#L49-L751)
 - [agent/src/swarm/task_store.py:16-249](file://agent/src/swarm/task_store.py#L16-L249)
 - [agent/src/swarm/worker.py:297-758](file://agent/src/swarm/worker.py#L297-L758)
+- [agent/src/tools/swarm_tool.py:667-950](file://agent/src/tools/swarm_tool.py#L667-L950)
 - [agent/src/api/swarm_routes.py:91-211](file://agent/src/api/swarm_routes.py#L91-L211)
 - [frontend/src/stores/agent.ts:251-280](file://frontend/src/stores/agent.ts#L251-L280)
 
@@ -85,7 +100,7 @@ E --> F
   - SwarmRun：一次Swarm运行的完整状态聚合根
   - SwarmTask：DAG中的一个任务节点
   - SwarmEvent：事件日志条目，用于SSE与审计
-  - WorkerResult：工作者执行结果
+  - WorkerResult：工作者执行结果，**新增** content_filter_warnings字段
 - 持久化
   - SwarmStore：run.json原子写入、events.jsonl追加、reconcile_run收敛、stale检测与回收
   - TaskStore：任务级CRUD、依赖解析、拓扑分层
@@ -93,6 +108,9 @@ E --> F
   - SwarmRuntime：启动运行、分层并行执行、取消、重试、最终报告聚合、事件发射
 - 工作进程
   - Worker：轻量ReAct循环、工具调用、心跳、摘要与产物、内容过滤保护
+- **新增**：SwarmTool
+  - 增强的JSON结果结构，包含artifact_read_hint和详细的artifact访问指导
+  - 改进的文件读取程序，提供正确的run_dir参数使用说明
 - API
   - swarm_routes：创建/列举/获取运行、SSE事件流、取消/重试
 - 前端
@@ -104,6 +122,7 @@ E --> F
 - [agent/src/swarm/task_store.py:16-249](file://agent/src/swarm/task_store.py#L16-L249)
 - [agent/src/swarm/runtime.py:49-751](file://agent/src/swarm/runtime.py#L49-L751)
 - [agent/src/swarm/worker.py:297-758](file://agent/src/swarm/worker.py#L297-L758)
+- [agent/src/tools/swarm_tool.py:667-950](file://agent/src/tools/swarm_tool.py#L667-L950)
 - [agent/src/api/swarm_routes.py:91-211](file://agent/src/api/swarm_routes.py#L91-L211)
 - [frontend/src/stores/agent.ts:251-280](file://frontend/src/stores/agent.ts#L251-L280)
 
@@ -114,6 +133,7 @@ Swarm运行状态管理的整体流程如下：
 - 事件：每个关键阶段写入events.jsonl，并通过SSE推送给前端
 - 收敛：层边界将任务快照回写run.json；结束时根据任务状态推导运行终态
 - 恢复：reconcile_run在读取时合并任务实时状态、修复僵尸运行、回收超时无心跳的运行
+- **新增**：SwarmTool提供增强的JSON结果，包含artifact访问指导和错误处理
 
 ```mermaid
 sequenceDiagram
@@ -123,6 +143,7 @@ participant RT as "SwarmRuntime"
 participant ST as "SwarmStore"
 participant TS as "TaskStore"
 participant W as "Worker"
+participant Tool as "SwarmTool"
 Client->>API : POST /swarm/runs
 API->>RT : start_run(preset, user_vars)
 RT->>ST : create_run(run)
@@ -136,15 +157,19 @@ RT->>ST : append_event(...)
 RT->>ST : _sync_run_tasks_snapshot()
 end
 RT->>ST : update_run(final status)
+Tool->>ST : load_run(run_id)
+Tool->>ST : reconcile_run(run)
+Tool-->>Client : JSON结果(含artifact_read_hint)
 API-->>Client : SSE事件流(任务/运行事件)
 ```
 
-图表来源
+**图表来源**
 - [agent/src/api/swarm_routes.py:91-211](file://agent/src/api/swarm_routes.py#L91-L211)
 - [agent/src/swarm/runtime.py:211-391](file://agent/src/swarm/runtime.py#L211-L391)
 - [agent/src/swarm/store.py:159-218](file://agent/src/swarm/store.py#L159-L218)
 - [agent/src/swarm/task_store.py:47-110](file://agent/src/swarm/task_store.py#L47-L110)
 - [agent/src/swarm/worker.py:297-758](file://agent/src/swarm/worker.py#L297-L758)
+- [agent/src/tools/swarm_tool.py:872-943](file://agent/src/tools/swarm_tool.py#L872-L943)
 
 ## 详细组件分析
 
@@ -157,6 +182,8 @@ API-->>Client : SSE事件流(任务/运行事件)
   - completed | failed | timeout | token_limit | incomplete
 - SwarmRun关键字段
   - id、preset_name、status、user_vars、agents、tasks、created_at、completed_at、final_report、token计数、provider/model、grounding_data
+- **新增**：WorkerResult扩展
+  - 新增content_filter_warnings字段，用于跟踪内容过滤警告
 
 ```mermaid
 stateDiagram-v2
@@ -168,7 +195,7 @@ running --> cancelled : "用户取消/层超时"
 note right of running : "reconcile_run会合并任务状态并回收僵尸运行"
 ```
 
-图表来源
+**图表来源**
 - [agent/src/swarm/models.py:14-41](file://agent/src/swarm/models.py#L14-L41)
 - [agent/src/swarm/store.py:364-423](file://agent/src/swarm/store.py#L364-L423)
 
@@ -191,7 +218,7 @@ Retry --> Rename
 Rename -- 是 --> Done(["完成"])
 ```
 
-图表来源
+**图表来源**
 - [agent/src/swarm/store.py:94-113](file://agent/src/swarm/store.py#L94-L113)
 - [agent/src/swarm/store.py:159-218](file://agent/src/swarm/store.py#L159-L218)
 - [agent/src/swarm/store.py:555-566](file://agent/src/swarm/store.py#L555-L566)
@@ -226,7 +253,7 @@ PersistS -- 否 --> EndS["返回"]
 Stale -- 否 --> ReturnHyd
 ```
 
-图表来源
+**图表来源**
 - [agent/src/swarm/store.py:286-423](file://agent/src/swarm/store.py#L286-L423)
 
 章节来源
@@ -259,7 +286,7 @@ end
 RT->>ST : update_run(final)
 ```
 
-图表来源
+**图表来源**
 - [agent/src/swarm/runtime.py:86-148](file://agent/src/swarm/runtime.py#L86-L148)
 - [agent/src/swarm/runtime.py:211-391](file://agent/src/swarm/runtime.py#L211-L391)
 - [agent/src/swarm/runtime.py:465-634](file://agent/src/swarm/runtime.py#L465-L634)
@@ -272,6 +299,7 @@ RT->>ST : update_run(final)
 - 工具调用：带心跳包装，确保events.jsonl尾部活跃，避免被误判为僵尸
 - 摘要与产物：最终输出report.md与summary，收集artifact_paths
 - 事件：worker_started/worker_completed/worker_failed/worker_timeout/worker_token_limit/worker_incomplete/tool_call/tool_result等
+- **新增**：内容过滤警告跟踪，通过content_filter_warnings字段返回
 
 ```mermaid
 flowchart TD
@@ -286,11 +314,35 @@ Append --> Loop
 Loop -- 超时/超限/熔断 --> Fail["返回timeout/token_limit/failed"]
 ```
 
-图表来源
+**图表来源**
 - [agent/src/swarm/worker.py:297-758](file://agent/src/swarm/worker.py#L297-L758)
 
 章节来源
 - [agent/src/swarm/worker.py:297-758](file://agent/src/swarm/worker.py#L297-L758)
+
+### **新增**：SwarmTool增强的JSON结果结构
+- **增强的JSON结构**：
+  - status：运行状态
+  - wait_budget_exhausted：等待预算是否耗尽
+  - run_id：运行ID
+  - run_dir：运行目录路径
+  - artifact_read_hint：artifact访问指导
+  - preset：使用的预设名称
+  - auto_variables：自动提取的变量
+  - final_report：最终报告文本
+  - error：错误信息
+  - tasks：任务摘要列表
+  - token_usage：token使用情况
+- **artifact访问指导**：
+  - 提供正确的run_dir参数使用说明
+  - 包含具体的read_file调用示例
+  - 强调不要尝试读取不存在的final_report.md文件
+- **错误处理改进**：
+  - 改进的错误消息格式
+  - 更好的超时处理逻辑
+
+章节来源
+- [agent/src/tools/swarm_tool.py:872-943](file://agent/src/tools/swarm_tool.py#L872-L943)
 
 ### API与SSE事件流
 - 创建运行：POST /swarm/runs，返回id、status、preset_name
@@ -317,7 +369,7 @@ end
 end
 ```
 
-图表来源
+**图表来源**
 - [agent/src/api/swarm_routes.py:169-211](file://agent/src/api/swarm_routes.py#L169-L211)
 - [agent/src/swarm/store.py:246-284](file://agent/src/swarm/store.py#L246-L284)
 
@@ -337,7 +389,7 @@ Find -- 否 --> NewMsg["新增swarm_status消息"] --> Insert["插入swarmRuns[r
 Update["updateSwarmStatus(runId, updater)"] --> Patch["局部更新现有状态"]
 ```
 
-图表来源
+**图表来源**
 - [frontend/src/stores/agent.ts:251-280](file://frontend/src/stores/agent.ts#L251-L280)
 
 章节来源
@@ -349,6 +401,7 @@ Update["updateSwarmStatus(runId, updater)"] --> Patch["局部更新现有状态"
   - store依赖models、task_store、config.accessor
   - worker依赖models、tools、providers、agent.progress、agent.skills
   - routes依赖runtime、store、models、serialization
+  - **新增**：swarm_tool依赖runtime、store、serialization
   - 前端store依赖后端SSE事件，映射到swarmRuns
 - 外部依赖
   - FastAPI、SSE、ThreadPoolExecutor、Pydantic、文件系统原子操作
@@ -364,14 +417,17 @@ task_store --> store
 worker --> runtime
 routes["swarm_routes.py"] --> runtime
 routes --> store
+swarm_tool["swarm_tool.py"] --> runtime
+swarm_tool --> store
 frontend["agent.ts"] --> routes
 ```
 
-图表来源
+**图表来源**
 - [agent/src/swarm/runtime.py:25-44](file://agent/src/swarm/runtime.py#L25-L44)
 - [agent/src/swarm/store.py:21-24](file://agent/src/swarm/store.py#L21-L24)
 - [agent/src/swarm/worker.py:16-36](file://agent/src/swarm/worker.py#L16-L36)
 - [agent/src/api/swarm_routes.py:18-35](file://agent/src/api/swarm_routes.py#L18-L35)
+- [agent/src/tools/swarm_tool.py:16-18](file://agent/src/tools/swarm_tool.py#L16-L18)
 - [frontend/src/stores/agent.ts:251-280](file://frontend/src/stores/agent.ts#L251-L280)
 
 章节来源
@@ -379,6 +435,7 @@ frontend["agent.ts"] --> routes
 - [agent/src/swarm/store.py:21-24](file://agent/src/swarm/store.py#L21-L24)
 - [agent/src/swarm/worker.py:16-36](file://agent/src/swarm/worker.py#L16-L36)
 - [agent/src/api/swarm_routes.py:18-35](file://agent/src/api/swarm_routes.py#L18-L35)
+- [agent/src/tools/swarm_tool.py:16-18](file://agent/src/tools/swarm_tool.py#L16-L18)
 - [frontend/src/stores/agent.ts:251-280](file://frontend/src/stores/agent.ts#L251-L280)
 
 ## 性能与并发特性
@@ -395,8 +452,9 @@ frontend["agent.ts"] --> routes
 - 资源控制
   - 任务超时、迭代上限、token估算上限
   - 内容过滤熔断防止无限循环
-
-[本节为通用指导，无需特定文件引用]
+- **新增**：SwarmTool性能优化
+  - 改进的等待预算处理，避免不必要的取消
+  - 优化的artifact收集算法，提高文件遍历效率
 
 ## 故障排除指南
 - 运行卡在running
@@ -409,26 +467,39 @@ frontend["agent.ts"] --> routes
 - 任务失败或超时
   - 查看task.error与WorkerResult.status；区分timeout、token_limit、incomplete
   - 检查工具调用是否触发内容过滤熔断
+  - **新增**：检查content_filter_warnings字段了解内容过滤情况
 - 僵尸运行
   - 使用reap_stale_running_runs或reconcile_run进行清理；确认心跳配置合理
 - 前端状态不同步
   - 确认upsertSwarmStatus/updateSwarmStatus正确调用；核对swarmRuns映射键为runId
+- **新增**：SwarmTool相关问题
+  - JSON结果截断：注意artifact_read_hint字段优先于final_report
+  - Artifact访问错误：确保使用正确的run_dir参数
+  - 超时处理：wait_budget_exhausted=true表示等待预算耗尽，但运行仍在后台继续
 
 章节来源
 - [agent/src/swarm/store.py:315-423](file://agent/src/swarm/store.py#L315-L423)
 - [agent/src/api/swarm_routes.py:169-211](file://agent/src/api/swarm_routes.py#L169-L211)
 - [agent/src/swarm/runtime.py:465-634](file://agent/src/swarm/runtime.py#L465-L634)
 - [agent/src/swarm/worker.py:416-758](file://agent/src/swarm/worker.py#L416-L758)
+- [agent/src/tools/swarm_tool.py:872-943](file://agent/src/tools/swarm_tool.py#L872-L943)
 - [frontend/src/stores/agent.ts:251-280](file://frontend/src/stores/agent.ts#L251-L280)
 
 ## 结论
-Swarm运行状态管理系统通过清晰的数据模型、严格的持久化策略、健壮的收敛与恢复机制，实现了多Swarm实例的安全隔离与可靠执行。结合SSE事件流与前端状态管理，提供了实时、一致、可观测的运行体验。建议在生产环境中：
+Swarm运行状态管理系统通过清晰的数据模型、严格的持久化策略、健壮的收敛与恢复机制，实现了多Swarm实例的安全隔离与可靠执行。结合SSE事件流与前端状态管理，提供了实时、一致、可观测的运行体验。**最新的增强功能**包括：
+
+- **增强的JSON结果结构**：提供更详细的artifact访问指导和错误信息
+- **改进的文件读取程序**：确保正确使用run_dir参数访问artifact文件
+- **完善的多代理协作故障排除**：包含内容过滤警告跟踪和更好的错误处理
+- **详细的artifact访问模式示例**：帮助开发者正确使用read_file工具
+
+建议在生产环境中：
 - 保持心跳配置合理，避免误判僵尸运行
 - 关注reconcile_run的恢复事件，及时排查异常
 - 利用SSE断点续传与任务状态字段进行前端健壮性处理
 - 定期巡检events.jsonl与tasks/*.json，辅助定位复杂问题
-
-[本节为总结，无需特定文件引用]
+- **新增**：使用SwarmTool返回的artifact_read_hint字段进行artifact访问
+- **新增**：监控content_filter_warnings字段以了解内容过滤情况
 
 ## 附录：API与事件速查
 - REST
@@ -439,6 +510,18 @@ Swarm运行状态管理系统通过清晰的数据模型、严格的持久化策
   - POST /swarm/runs/{run_id}/retry：重试失败/过期/取消的运行
 - SSE
   - GET /swarm/runs/{run_id}/events：增量事件流，支持Last-Event-ID
+- **新增**：SwarmTool JSON结果字段
+  - status：运行状态
+  - wait_budget_exhausted：等待预算是否耗尽
+  - run_id：运行ID
+  - run_dir：运行目录路径
+  - artifact_read_hint：artifact访问指导
+  - preset：预设名称
+  - auto_variables：自动变量
+  - final_report：最终报告
+  - error：错误信息
+  - tasks：任务摘要
+  - token_usage：token使用情况
 - 常见事件
   - run_started、layer_started、task_started、task_completed、task_failed、task_blocked、task_retry、run_completed、run_error、done
   - task_heartbeat、tool_call、tool_result、worker_text、content_filter_skipped、content_filter_circuit_breaker
@@ -447,3 +530,4 @@ Swarm运行状态管理系统通过清晰的数据模型、严格的持久化策
 - [agent/src/api/swarm_routes.py:91-260](file://agent/src/api/swarm_routes.py#L91-L260)
 - [agent/src/swarm/runtime.py:166-209](file://agent/src/swarm/runtime.py#L166-L209)
 - [agent/src/swarm/worker.py:80-109](file://agent/src/swarm/worker.py#L80-L109)
+- [agent/src/tools/swarm_tool.py:872-943](file://agent/src/tools/swarm_tool.py#L872-L943)

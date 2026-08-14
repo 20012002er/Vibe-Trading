@@ -2335,15 +2335,37 @@ def _run_to_dict(run, *, timed_out: bool = False, is_stale: bool = False) -> dic
     from src.swarm.serialization import run_level_error, serialize_task
     from src.swarm.store import swarm_runs_root
 
+    run_dir = str(swarm_runs_root() / run.id)
+
+    # Build artifact read hint for the agent
+    task_summaries = [serialize_task(t) for t in run.tasks]
+    artifact_examples = []
+    for ts in task_summaries[:3]:
+        for art in (ts.get("artifacts") or [])[:2]:
+            artifact_examples.append(f"  read_file(path='{art}', run_dir='{run_dir}')")
+            if len(artifact_examples) >= 3:
+                break
+        if len(artifact_examples) >= 3:
+            break
+
+    artifact_read_hint = (
+        f"Use run_dir='{run_dir}' as the run_dir parameter when calling read_file. "
+        "The 'final_report' field below already contains the full text report — use it directly, "
+        "do NOT try to read a 'final_report.md' file. "
+        "For artifact files (CSV, JSON, etc.), call read_file with the relative path from each task's 'artifacts' list. "
+        + ("Examples:\n" + "\n".join(artifact_examples) if artifact_examples else "")
+    )
+
     return {
         "run_id": run.id,
-        "run_dir": str(swarm_runs_root() / run.id),
+        "run_dir": run_dir,
+        "artifact_read_hint": artifact_read_hint,
         "status": run.status.value,
         "preset": run.preset_name,
         "created_at": run.created_at,
         "completed_at": run.completed_at,
         "error": run_level_error(run),
-        "tasks": [serialize_task(t) for t in run.tasks],
+        "tasks": task_summaries,
         "final_report": run.final_report,
         "total_input_tokens": run.total_input_tokens,
         "total_output_tokens": run.total_output_tokens,
