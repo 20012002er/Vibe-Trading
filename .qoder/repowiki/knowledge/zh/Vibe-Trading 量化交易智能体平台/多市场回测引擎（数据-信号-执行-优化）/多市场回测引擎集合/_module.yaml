@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: backtest_engine/engines
-title: 多市场回测引擎集合
-scope:
-    - agent/backtest/engines/
-source_files: []
-depends_on: []
-related_to:
-    - path: backtest_engine/core_runner_and_metrics
