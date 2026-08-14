@@ -3,7 +3,7 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-08-14T02:03:24Z"
+exported_at: "2026-08-14T02:34:46Z"
 modules:
     "":
         dir_name: Vibe-Trading 量化交易智能体平台

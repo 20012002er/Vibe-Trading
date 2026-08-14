@@ -139,8 +139,7 @@ class DataLoader:
 
         # ETF check must precede A-share — 518880.SH ends with .SH but is an ETF.
         if _is_etf_listed(code):
-            _require_daily_interval(interval, "etf")
-            return self._fetch_etf(ak, code, start_date, end_date)
+            return self._fetch_etf(ak, code, start_date, end_date, interval)
         if _is_a_share(code):
             return self._fetch_a_share(ak, code, start_date, end_date, interval)
         if _is_us(code):
@@ -199,11 +198,13 @@ class DataLoader:
                 continue
         return None
 
-    def _fetch_etf(self, ak, code: str, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
+    def _fetch_etf(
+        self, ak, code: str, start_date: str, end_date: str, interval: str = "1D",
+    ) -> Optional[pd.DataFrame]:
         """Fetch exchange-listed ETF / LOF via fund_etf_hist_sina.
 
         Sina symbol format is ``sh518880`` / ``sz159915``. The endpoint returns
-        the full history; we filter to the requested window after fetching.
+        daily bars; we resample to weekly/monthly locally when requested.
         """
         digits, _, suffix = code.upper().partition(".")
         symbol = f"{suffix.lower()}{digits}"
@@ -212,7 +213,16 @@ class DataLoader:
             return None
         df = self._normalize(df, date_col="date")
         # fund_etf_hist_sina returns full history — clip to window.
-        return df.loc[start_date:end_date]
+        df = df.loc[start_date:end_date]
+        if df.empty:
+            return None
+        # Resample daily bars to weekly/monthly if requested.
+        period = _INTERVAL_MAP_DAILY.get(interval)
+        if period == "weekly":
+            return self._resample_to_weekly(df)
+        if period == "monthly":
+            return self._resample_to_monthly(df)
+        return df
 
     def _fetch_forex(self, ak, code: str, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
         """Fetch forex pair via forex_hist_em.
@@ -289,3 +299,37 @@ class DataLoader:
         if "volume" not in df.columns:
             df["volume"] = 0.0
         return df
+
+    @staticmethod
+    def _resample_to_weekly(df: pd.DataFrame) -> pd.DataFrame:
+        """Resample daily bars to weekly bars.
+
+        Uses Friday as the week-end anchor. Open = first day's open,
+        High = max high, Low = min low, Close = last day's close,
+        Volume = sum of volumes.
+        """
+        weekly = df.resample("W-FRI").agg({
+            "open": "first",
+            "high": "max",
+            "low": "min",
+            "close": "last",
+            "volume": "sum",
+        }).dropna(subset=["open", "high", "low", "close"])
+        return weekly
+
+    @staticmethod
+    def _resample_to_monthly(df: pd.DataFrame) -> pd.DataFrame:
+        """Resample daily bars to monthly bars.
+
+        Uses month-end anchor. Open = first day's open,
+        High = max high, Low = min low, Close = last day's close,
+        Volume = sum of volumes.
+        """
+        monthly = df.resample("M").agg({
+            "open": "first",
+            "high": "max",
+            "low": "min",
+            "close": "last",
+            "volume": "sum",
+        }).dropna(subset=["open", "high", "low", "close"])
+        return monthly
