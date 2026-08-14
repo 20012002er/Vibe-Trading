@@ -201,6 +201,9 @@ def _fetch_membership(code: str) -> str:
 def _fetch_ranking(limit: int) -> str:
     """Fetch the industry-board ranking by intraday percent change.
 
+    Tries Eastmoney first, falls back to Tonghuashun (同花顺) via AKShare
+    when Eastmoney is unreachable.
+
     Args:
         limit: Number of top boards to keep (already validated and capped).
 
@@ -208,6 +211,7 @@ def _fetch_ranking(limit: int) -> str:
         A JSON envelope string with the ranked boards, or an error envelope when
         the request fails.
     """
+    # Try Eastmoney first
     try:
         payload = get_json(
             _RANKING_URL,
@@ -221,25 +225,54 @@ def _fetch_ranking(limit: int) -> str:
                 "fltt": "2",
             },
         )
-    except Exception as exc:  # noqa: BLE001 - surface a clean error envelope
-        logger.warning("sector ranking fetch failed: %s", exc)
-        return _error(f"ranking request failed: {exc}")
+        boards = [
+            parsed
+            for parsed in (_parse_ranking_row(r) for r in _diff_rows(payload))
+            if parsed is not None
+        ]
+        if len(boards) > limit:
+            boards = boards[:limit]
+        envelope = {
+            "ok": True,
+            "market": "stock",
+            "source": "eastmoney",
+            "mode": "ranking",
+            "data": {"boards": boards},
+        }
+        return json.dumps(envelope, ensure_ascii=False)
+    except Exception as exc:  # noqa: BLE001 - try fallback
+        logger.warning("sector ranking fetch failed (eastmoney): %s; trying ths fallback", exc)
 
-    boards = [
-        parsed
-        for parsed in (_parse_ranking_row(r) for r in _diff_rows(payload))
-        if parsed is not None
-    ]
-    if len(boards) > limit:
-        boards = boards[:limit]
-    envelope = {
-        "ok": True,
-        "market": "stock",
-        "source": "eastmoney",
-        "mode": "ranking",
-        "data": {"boards": boards},
-    }
-    return json.dumps(envelope, ensure_ascii=False)
+    # Fallback to Tonghuashun via AKShare
+    try:
+        import akshare as ak
+        df = ak.stock_board_industry_summary_ths()
+        if df is None or df.empty:
+            return _error("ths ranking returned empty data")
+
+        # Normalize column names and build response
+        boards = []
+        for _, row in df.head(limit).iterrows():
+            boards.append({
+                "board_code": str(row.get("板块", "")),
+                "board_name": str(row.get("板块", "")),
+                "change_pct": float(row.get("涨跌幅", 0)) if row.get("涨跌幅") else None,
+                "up_count": int(row.get("上涨家数", 0)) if row.get("上涨家数") else None,
+                "down_count": int(row.get("下跌家数", 0)) if row.get("下跌家数") else None,
+                "leader": str(row.get("领涨股", "")) if row.get("领涨股") else None,
+            })
+
+        envelope = {
+            "ok": True,
+            "market": "stock",
+            "source": "tonghuashun",
+            "mode": "ranking",
+            "data": {"boards": boards},
+        }
+        return json.dumps(envelope, ensure_ascii=False)
+    except Exception as exc:  # noqa: BLE001 - surface a clean error envelope
+        logger.warning("sector ranking fetch failed (ths fallback): %s", exc)
+        return _error(f"ranking request failed: {exc}")
 
 
 class SectorInfoTool(BaseTool):

@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: agent_core/quantlib/attribution_credit_impact
+title: 量化归因、信用风险与市场冲击模型
+scope:
+    - agent/src/quantlib/attribution.py
+    - agent/src/quantlib/credit.py
+    - agent/src/quantlib/impact.py
+    - agent/src/quantlib/factormodel.py
+source_files: []
+depends_on: []
+related_to:
+    - path: backtest_engine/core_runner_and_metrics

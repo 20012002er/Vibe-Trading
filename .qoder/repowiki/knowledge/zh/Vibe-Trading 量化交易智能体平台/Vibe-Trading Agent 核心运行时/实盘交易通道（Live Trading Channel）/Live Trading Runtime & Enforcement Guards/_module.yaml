@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: agent_core/live_trading/core_guards
+title: Live Trading Runtime & Enforcement Guards
+scope:
+    - agent/src/live/
+source_files: []
+depends_on: []
+related_to:
+    - path: agent_core/live_trading/advisory
+    - path: agent_core/live_trading/mandate
+    - path: agent_core/live_trading/runtime

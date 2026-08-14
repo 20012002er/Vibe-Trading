@@ -21,6 +21,8 @@ import json
 import logging
 from typing import Any
 
+import pandas as pd
+
 from backtest.loaders.eastmoney_client import get_json
 from src.agent.tools import BaseTool
 
@@ -120,6 +122,9 @@ def _shape_row(raw: Any) -> dict[str, Any] | None:
 def _screen_market(market: str, *, sort_by: str, top_n: int) -> list[dict[str, Any]]:
     """Fetch the ``top_n`` instruments of ``market`` ranked by ``sort_by``.
 
+    Tries Eastmoney first, falls back to Sina via AKShare for A-share market
+    when Eastmoney is unreachable.
+
     Args:
         market: One of :data:`_MARKET_FS` keys (``a`` / ``us`` / ``hk``).
         sort_by: One of :data:`_SORT_FID` keys.
@@ -134,6 +139,7 @@ def _screen_market(market: str, *, sort_by: str, top_n: int) -> list[dict[str, A
         requests.HTTPError: Non-2xx response status.
         ValueError: Body is not valid JSON.
     """
+    # Try Eastmoney first
     payload = get_json(
         _CLIST_URL,
         params={
@@ -162,6 +168,72 @@ def _screen_market(market: str, *, sort_by: str, top_n: int) -> list[dict[str, A
         if shaped is not None:
             rows.append(shaped)
     return rows[:top_n]
+
+
+def _screen_market_sina(*, sort_by: str, top_n: int) -> list[dict[str, Any]]:
+    """Fetch A-share market data from Sina via AKShare as fallback.
+
+    Args:
+        sort_by: One of :data:`_SORT_FID` keys.
+        top_n: Number of rows to return.
+
+    Returns:
+        A list of shaped row dicts sorted by the chosen metric.
+
+    Raises:
+        Exception: When AKShare or data processing fails.
+    """
+    import akshare as ak
+
+    # Fetch A-share spot data from Sina
+    df = ak.stock_zh_a_spot()
+    if df is None or df.empty:
+        return []
+
+    # Normalize column names to match our expected format
+    # Sina columns: 代码，名称，最新价，涨跌额，涨跌幅，买入，卖出，昨收，今开，最高，最低，成交量，成交额，时间戳
+    col_map = {
+        "代码": "code",
+        "名称": "name",
+        "最新价": "price",
+        "涨跌额": "change",
+        "涨跌幅": "change_pct",
+        "成交量": "volume",
+        "成交额": "amount",
+    }
+    df = df.rename(columns=col_map)
+
+    # Convert numeric columns
+    for col in ["price", "change", "change_pct", "volume", "amount"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # Sort by the chosen metric
+    sort_col = {
+        "change_pct": "change_pct",
+        "volume": "volume",
+        "amount": "amount",
+        "turnover": "amount",  # Sina doesn't have turnover rate, use amount as proxy
+    }.get(sort_by, "change_pct")
+
+    if sort_col in df.columns:
+        df = df.sort_values(by=sort_col, ascending=False, na_position="last")
+
+    # Build response rows
+    rows = []
+    for _, row in df.head(top_n).iterrows():
+        rows.append({
+            "code": str(row.get("code", "")),
+            "name": str(row.get("name", "")),
+            "price": float(row["price"]) if pd.notna(row.get("price")) else None,
+            "change_pct": float(row["change_pct"]) if pd.notna(row.get("change_pct")) else None,
+            "change": float(row["change"]) if pd.notna(row.get("change")) else None,
+            "volume": float(row["volume"]) if pd.notna(row.get("volume")) else None,
+            "amount": float(row["amount"]) if pd.notna(row.get("amount")) else None,
+            "turnover_rate": None,  # Sina doesn't provide turnover rate
+        })
+
+    return rows
 
 
 class MarketScreenerTool(BaseTool):
@@ -237,16 +309,27 @@ class MarketScreenerTool(BaseTool):
             return _error("top_n must be a positive integer")
         top_n = min(top_n, _MAX_TOP_N)
 
+        # Try Eastmoney first, fall back to Sina for A-share
+        source = "eastmoney"
         try:
             rows = _screen_market(market, sort_by=sort_by, top_n=top_n)
         except Exception as exc:  # noqa: BLE001 - surface as the error envelope
-            logger.warning("market screen failed for %s/%s: %s", market, sort_by, exc)
-            return _error(str(exc))
+            logger.warning("market screen failed for %s/%s (eastmoney): %s; trying sina fallback", market, sort_by, exc)
+            # Fallback to Sina via AKShare for A-share market only
+            if market == "a":
+                try:
+                    rows = _screen_market_sina(sort_by=sort_by, top_n=top_n)
+                    source = "sina"
+                except Exception as exc2:  # noqa: BLE001
+                    logger.warning("market screen failed for %s/%s (sina fallback): %s", market, sort_by, exc2)
+                    return _error(str(exc2))
+            else:
+                return _error(str(exc))
 
         envelope = {
             "ok": True,
             "market": market,
-            "source": "eastmoney",
+            "source": source,
             "data": {
                 "market": market,
                 "sort_by": sort_by,

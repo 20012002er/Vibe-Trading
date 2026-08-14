@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: agent_core/channels/channel_runtime
+title: IM 渠道运行时与消息总线
+scope:
+    - agent/src/channels/bus/
+    - agent/src/channels/pairing/
+    - agent/src/channels/
+source_files: []
+depends_on: []
+related_to:
+    - path: agent_core/channels/messaging_adapters
+    - path: agent_core/live_trading/runtime
+    - path: agent_core/session_goal_swarm/session

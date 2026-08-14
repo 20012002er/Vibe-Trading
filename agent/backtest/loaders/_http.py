@@ -177,6 +177,17 @@ def throttled_get(
                 time.sleep(backoff)
                 # Re-wait for throttle spacing before retry.
                 _THROTTLE.wait(host_key, min_interval)
+                # On the last retry, close the session to force a new TCP connection.
+                # Stale connections in the pool can cause RemoteDisconnected errors.
+                if attempt == max_retries - 1:
+                    with _SESSIONS_LOCK:
+                        old_session = _SESSIONS.pop(host_key, None)
+                    if old_session is not None:
+                        try:
+                            old_session.close()
+                        except Exception:
+                            pass
+                    session = _session_for(host_key)
             else:
                 logger.warning(
                     "throttled_get exhausted retries for %s: %s",
