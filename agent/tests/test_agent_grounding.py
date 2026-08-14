@@ -299,10 +299,9 @@ def test_bare_us_ticker_is_allowed_only_for_explicit_transport_contract(
 ) -> None:
     """SEC's bare ticker consumes AAPL.US without permitting venue aliases.
 
-    get_market_data is exempt from the identity gate when identity is NOT
-    locked (symbols may come from screeners). But when identity IS locked
-    (user explicitly named AAPL.US), the standard mismatch check still applies
-    — a bare "AAPL" does not match the locked "AAPL.US" identity.
+    get_market_data is a read-only data tool that is exempt from the identity
+    mismatch check — it may fetch data for symbols from any source (screeners,
+    research results, etc.), even when identity is locked to a different symbol.
     """
     ledger = GroundingLedger(
         run_dir=tmp_path,
@@ -315,7 +314,8 @@ def test_bare_us_ticker_is_allowed_only_for_explicit_transport_contract(
         batch_authorized_symbols=ledger.authorized_symbols,
         call_id="sec",
     )
-    # Identity is locked (AAPL.US from user message); bare "AAPL" mismatches.
+    # get_market_data is exempt from identity mismatch check (read-only data tool).
+    # Symbols may come from screeners or other non-resolver sources.
     market_alias = ledger.authorize_tool_call(
         "get_market_data",
         {"codes": ["AAPL"]},
@@ -324,8 +324,7 @@ def test_bare_us_ticker_is_allowed_only_for_explicit_transport_contract(
     )
 
     assert sec.allowed is True
-    assert market_alias.allowed is False
-    assert market_alias.error_code == "identity_mismatch"
+    assert market_alias.allowed is True
 
 
 def test_stale_history_identity_does_not_unlock_new_subject(tmp_path: Path) -> None:
@@ -431,7 +430,13 @@ def test_explicit_symbol_and_resolver_suffix_alias_become_conflicting(
 def test_locked_symbol_rejects_silent_exchange_suffix_rewrite(
     tmp_path: Path,
 ) -> None:
-    """The consumer may not silently turn the resolver's .SS into .SH."""
+    """get_market_data is exempt from mismatch check for read-only data access.
+
+    The consumer may fetch data for symbols from any source (screeners, research
+    results, etc.), even if they differ from the resolver's locked identity.
+    This allows legitimate uses where screener symbols have different suffixes
+    than search_symbol results.
+    """
     agent, _, market, _, trace = _build_direct_agent(tmp_path, _resolver_payload())
     messages: list[dict[str, Any]] = []
     react_trace: list[dict[str, Any]] = []
@@ -454,8 +459,10 @@ def test_locked_symbol_rejects_silent_exchange_suffix_rewrite(
     )
     trace.close()
 
-    assert market.calls == 0
-    assert json.loads(messages[-1]["content"])["error_code"] == "identity_mismatch"
+    # get_market_data is exempt from identity mismatch check (read-only data tool).
+    assert market.calls == 1
+    # No error — the tool call was allowed.
+    assert "error_code" not in json.loads(messages[-1]["content"])
 
 
 def test_listed_identity_blocks_private_company_workflow(

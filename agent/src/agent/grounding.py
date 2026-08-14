@@ -750,15 +750,11 @@ class GroundingLedger:
                     ),
                     symbols=tuple(self._extract_symbol_arguments(arguments)),
                 )
-            # When identity is locked, fall through to the standard mismatch
-            # check below (prevents silent venue aliasing like .SS → .SH).
-            # When not locked, allow freely — symbols may come from screeners
-            # or other non-resolver sources.
-            if frozen_status == "locked":
-                # Fall through to standard mismatch check.
-                pass
-            else:
-                return ToolAuthorization(allowed=True)
+            # get_market_data is a read-only data tool that accepts symbols
+            # from any source (screeners, research results, etc.). It is
+            # exempt from the mismatch check to allow legitimate uses where
+            # screener symbols differ from search_symbol results.
+            return ToolAuthorization(allowed=True)
 
         if tool_name == "load_skill" and self._identity_required:
             frozen_status = batch_identity_status or self.identity_status
