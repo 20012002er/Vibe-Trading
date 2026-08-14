@@ -144,9 +144,11 @@ def register_swarm_routes(
         run = runtime._store.reconcile_run(loaded, write=True)
 
         from src.swarm.serialization import serialize_task
+        from src.swarm.store import swarm_runs_root
 
         return {
             "id": run.id,
+            "run_dir": str(swarm_runs_root() / run.id),
             "preset_name": run.preset_name,
             "status": run.status.value,
             "is_stale": runtime._store.is_run_stale(run),

@@ -132,7 +132,10 @@ def test_swarm_detail_uses_redacted_public_task_projection(
     assert task["summary"] == "Public summary"
     assert "<redacted>" in task["error"]
     assert internal_path not in response.text
-    assert "artifacts" not in task
+    # Artifacts are now included but redacted (defence in depth).
+    assert "artifacts" in task
+    assert len(task["artifacts"]) == 1
+    assert "<redacted>" in task["artifacts"][0]
     assert "prompt_template" not in task
     assert task["worker_iterations"] == 3
     assert task["iterations"] == 3
