@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: agent_core/openbb_bridge
-title: OpenBB Workspace 桥接适配器
-scope:
-    - agent/src/openbb_bridge/
-source_files: []
-depends_on: []
-related_to:
-    - path: agent_core/session_goal_swarm/session

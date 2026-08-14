@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: agent_core/scheduled_research
-title: 定时研究任务调度与持久化
-scope:
-    - agent/src/scheduled_research/
-source_files: []
-depends_on: []
-related_to:
-    - path: backtest_engine/core_runner_and_metrics
